@@ -26,6 +26,7 @@ use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Number;
@@ -70,8 +71,8 @@ trait CanImportExcelRecords
         $this->groupedIcon(FilamentIcon::resolve('actions::import-action.grouped') ?? 'heroicon-m-arrow-up-tray');
         $this->form(fn(ImportAction | ImportTableAction $action): array => array_merge([
             FileUpload::make('file')
-                ->label(__('filament-actions::import.modal.form.file.label'))
-                ->placeholder(__('filament-actions::import.modal.form.file.placeholder'))
+                ->label(__('filament-excel-import::import.modal.form.file.label'))
+                ->placeholder(__('filament-excel-import::import.modal.form.file.placeholder'))
                 ->acceptedFileTypes([
                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     'application/vnd.ms-excel',
@@ -243,11 +244,13 @@ trait CanImportExcelRecords
             /** @var TemporaryUploadedFile $excelFile */
             $excelFile = $data['file'];
             $activeSheetIndex = $data['activeSheet'] ?? $action->getActiveSheet() ?? 0;
+
             try {
                 $spreadsheet = $this->getUploadedFileSpreadsheet($excelFile);
                 if (! $spreadsheet) {
                     return;
                 }
+
                 $worksheet = $spreadsheet->getSheet((int) $activeSheetIndex);
                 $headerRow = $action->getHeaderRow() ?? 1;
                 // Get all data from the worksheet
@@ -296,39 +299,51 @@ trait CanImportExcelRecords
                         ->send();
                     return;
                 }
-                $user = auth()->user();
+
+                $user = Auth::check() ? Auth::user() : null;
+
                 $import = app(Import::class);
-                $import->user()->associate($user);
+                if ($user) {
+                    $import->user()->associate($user);
+                }
                 $import->file_name = $excelFile->getClientOriginalName();
                 $import->file_path = $excelFile->getRealPath();
                 $import->importer = $action->getImporter();
                 $import->total_rows = $totalRows;
                 $import->save();
-                $importChunkIterator = new ChunkIterator(new \ArrayIterator($rows), chunkSize: $action->getChunkSize());
-                /** @var array<array<array<string, string>>> $importChunks */
-                $importChunks = $importChunkIterator->get();
-                $job = $action->getJob() ?? ImportExcel::class;
+
+                // Store the import ID for later use
+                $importId = $import->id;
+
+                // Convert options to serializable format
                 $options = array_merge(
                     $action->getOptions(),
-                    Arr::except($data, ['file', 'columnMap', 'activeSheet', 'availableSheets']),
+                    Arr::except($data, ['file', 'columnMap']),
                 );
-                // We do not want to send the loaded user relationship to the queue in job payloads,
-                // in case it contains attributes that are not serializable, such as binary columns.
+
+                // Unset non-serializable relations to prevent issues
                 $import->unsetRelation('user');
-                $importJobs = collect($importChunks)
-                    ->map(fn(array $importChunk): object => app($job, [
-                        'import' => $import,
-                        'rows' => base64_encode(serialize($importChunk)),
-                        'columnMap' => $data['columnMap'],
+
+                $columnMap = $data['columnMap'];
+
+                // Create import chunks with import ID instead of full model
+                $importChunks = collect($rows)->chunk($action->getChunkSize())
+                    ->map(fn($chunk) => app($action->getJob() ?? ImportExcel::class, [
+                        'importId' => $importId,
+                        'rows' => base64_encode(serialize($chunk->all())),
+                        'columnMap' => $columnMap,
                         'options' => $options,
                     ]));
-                $columnMap = $data['columnMap'];
+
+                // Get importer with proper parameters
                 $importer = $import->getImporter(
                     columnMap: $columnMap,
-                    options: $options,
+                    options: $options
                 );
+
                 event(new ImportStarted($import, $columnMap, $options));
-                Bus::batch($importJobs->all())
+
+                Bus::batch($importChunks->all())
                     ->allowFailures()
                     ->when(
                         filled($jobQueue = $importer->getJobQueue()),
@@ -342,13 +357,26 @@ trait CanImportExcelRecords
                         filled($jobBatchName = $importer->getJobBatchName()),
                         fn(PendingBatch $batch) => $batch->name($jobBatchName),
                     )
-                    ->finally(function () use ($columnMap, $import, $jobConnection, $options) {
-                        $import->touch('completed_at');
-                        event(new ImportCompleted($import, $columnMap, $options));
-                        if (! $import->user instanceof Authenticatable) {
+                    ->finally(function () use ($importId, $columnMap, $options, $jobConnection) {
+                        // Retrieve fresh import from database in the callback to avoid serialization issues
+                        $import = Import::query()->find($importId);
+
+                        if (!$import) {
                             return;
                         }
+
+                        $import->touch('completed_at');
+
+                        event(new ImportCompleted($import, $columnMap, $options));
+
+                        // Check if user relation can be safely accessed
+                        $user = $import->user;
+                        if (! $user instanceof Authenticatable) {
+                            return;
+                        }
+
                         $failedRowsCount = $import->getFailedRowsCount();
+
                         Notification::make()
                             ->title($import->importer::getCompletedNotificationTitle($import))
                             ->body($import->importer::getCompletedNotificationBody($import))
@@ -386,6 +414,7 @@ trait CanImportExcelRecords
                             );
                     })
                     ->dispatch();
+
                 if (
                     (filled($jobConnection) && ($jobConnection !== 'sync')) ||
                     (blank($jobConnection) && (config('queue.default') !== 'sync'))
@@ -411,7 +440,7 @@ trait CanImportExcelRecords
                 $this instanceof TableAction => TableAction::class,
                 default => Action::class,
             })::make('downloadExample')
-                ->label(__('filament-actions::import.modal.actions.download_example.label'))
+                ->label(__('filament-excel-import::import.actions.example_template.label'))
                 ->link()
                 ->action(function (): StreamedResponse {
                     $columns = $this->getImporter()::getColumns();
@@ -645,10 +674,5 @@ trait CanImportExcelRecords
     {
         $this->fileValidationRules = $rules;
         return $this;
-    }
-
-    public function transform(array $row): array
-    {
-        return $row; // Return the row as is, or transform it as needed
     }
 }

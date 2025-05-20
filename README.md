@@ -31,6 +31,27 @@ You can install the package via composer:
 composer require hayderhatem/filament-excel-import
 ```
 
+## Database Setup
+
+The package includes migrations for the required database tables. You can publish and run them with:
+
+```bash
+php artisan vendor:publish --tag="filament-excel-import-migrations"
+php artisan migrate
+```
+
+Alternatively, the migrations will run automatically when your application migrates.
+
+### Migration Notes
+
+The package's migrations are designed to be safe and handle various scenarios:
+
+1. If the tables don't exist yet, they will be created with all required columns
+2. If the tables already exist but are missing some columns, only the missing columns will be added
+3. Migration files are automatically timestamped to ensure they run in the correct order
+
+This approach ensures compatibility with existing databases and prevents migration issues when updating the package.
+
 ## Usage
 
 ### Basic Usage
@@ -68,6 +89,11 @@ class UserImporter extends Importer
         ];
     }
 
+    /**
+     * Import a single row of data
+     * 
+     * This method must be implemented to process each row of data
+     */
     public function import(array $data, array $map, array $options = []): void
     {
         $user = new User();
@@ -77,6 +103,9 @@ class UserImporter extends Importer
         $user->save();
     }
 
+    /**
+     * Define the notification message shown when import is complete
+     */
     public static function getCompletedNotificationBody(Import $import): string
     {
         $body = 'Your user import has completed and ' . number_format($import->successful_rows) . ' ' . str('user')->plural($import->successful_rows) . ' ' . str('was')->plural($import->successful_rows) . ' imported.';

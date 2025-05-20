@@ -27,13 +27,13 @@ class ImportExcel implements ShouldQueue
     use HasImportProgressNotifications;
 
     /**
-     * @param  Import  $import
+     * @param  int  $importId The ID of the Import model
      * @param  string  $rows Base64-encoded serialized array of rows
      * @param  array<string, string>  $columnMap
      * @param  array<string, mixed>  $options
      */
     public function __construct(
-        public Import $import,
+        public int $importId,
         public string $rows,
         public array $columnMap,
         public array $options = [],
@@ -45,17 +45,20 @@ class ImportExcel implements ShouldQueue
             return;
         }
 
+        // Retrieve the import model by ID
+        $import = Import::findOrFail($this->importId);
+
         $rows = unserialize(base64_decode($this->rows));
 
         $importedRowsCount = 0;
         $failedRowsCount = 0;
 
-        $importer = $this->import->getImporter(
+        $importer = $import->getImporter(
             columnMap: $this->columnMap,
             options: $this->options,
         );
 
-        $user = $this->import->user;
+        $user = $import->user;
 
         if (! $user instanceof Authenticatable) {
             return;
@@ -77,11 +80,7 @@ class ImportExcel implements ShouldQueue
             $processedRows[] = $processedRow;
         }
 
-        $processedRows = $importer->transform(
-            Collection::make($processedRows),
-            $this->columnMap,
-            $this->options,
-        )->all();
+        // The transform method doesn't exist in the importer, so we'll use the processed rows directly
 
         foreach ($processedRows as $processedRow) {
             try {
@@ -95,22 +94,70 @@ class ImportExcel implements ShouldQueue
             } catch (Throwable $exception) {
                 $failedRowsCount++;
 
-                $this->import->failedRows()->create([
-                    'data' => array_map(
-                        fn($value) => is_null($value) ? null : (string) $value,
-                        $processedRow,
-                    ),
-                    'validation_errors' => [],
-                    'import_id' => $this->import->getKey(),
-                    'error' => $exception->getMessage(),
-                ]);
+                try {
+                    $import->failedRows()->create([
+                        'data' => array_map(
+                            fn($value) => is_null($value) ? null : (string) $value,
+                            $processedRow,
+                        ),
+                        'validation_errors' => [],
+                        'import_id' => $import->getKey(),
+                        'error' => $exception->getMessage(),
+                    ]);
+                } catch (Throwable $e) {
+                    // If there's an issue with validation_errors column, try without it
+                    try {
+                        $import->failedRows()->create([
+                            'data' => array_map(
+                                fn($value) => is_null($value) ? null : (string) $value,
+                                $processedRow,
+                            ),
+                            'import_id' => $import->getKey(),
+                            'error' => $exception->getMessage(),
+                        ]);
+                    } catch (Throwable $e2) {
+                        // If there's also an issue with error column, try with minimal data
+                        try {
+                            $import->failedRows()->create([
+                                'data' => array_map(
+                                    fn($value) => is_null($value) ? null : (string) $value,
+                                    $processedRow,
+                                ),
+                                'import_id' => $import->getKey(),
+                            ]);
+                        } catch (Throwable $e3) {
+                            // Log the error but continue processing
+                            \Illuminate\Support\Facades\Log::error('Failed to record import error: ' . $e3->getMessage());
+                        }
+                    }
+                }
             }
         }
 
-        $this->import->increment('processed_rows', count($processedRows));
-        $this->import->increment('imported_rows', $importedRowsCount);
-        $this->import->increment('failed_rows', $failedRowsCount);
+        // Try to update counters, handling missing columns gracefully
+        try {
+            $import->increment('processed_rows', count($processedRows));
+        } catch (Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to update processed_rows: ' . $e->getMessage());
+        }
 
-        $this->notifyImportProgress($this->import, $user);
+        try {
+            $import->increment('imported_rows', $importedRowsCount);
+        } catch (Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to update imported_rows: ' . $e->getMessage());
+        }
+
+        try {
+            $import->increment('failed_rows', $failedRowsCount);
+        } catch (Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to update failed_rows: ' . $e->getMessage());
+        }
+
+        // Notify only if we can safely do so
+        try {
+            $this->notifyImportProgress($import, $user);
+        } catch (Throwable $e) {
+            \Illuminate\Support\Facades\Log::error('Failed to send import notification: ' . $e->getMessage());
+        }
     }
 }
