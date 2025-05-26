@@ -2,6 +2,13 @@
     "name": "hayderhatem/filament-excel-import",
     "description": "Filament Excel import trait for Laravel",
     "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Hayder Hatem",
+            "email": "hayderhatem@example.com"
+        }
+    ],
     "autoload": {
         "psr-4": {
             "HayderHatem\\FilamentExcelImport\\": "src/"
