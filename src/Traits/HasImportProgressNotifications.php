@@ -2,7 +2,7 @@
 
 namespace HayderHatem\FilamentExcelImport\Traits;
 
-use Filament\Actions\Imports\Models\Import;
+use HayderHatem\FilamentExcelImport\Models\Import;
 use Filament\Notifications\Notification;
 use Illuminate\Contracts\Auth\Authenticatable;
 

@@ -15,6 +15,8 @@ A powerful Excel import extension for Filament PHP v3 that enables importing dat
 - 🚀 Background processing with Laravel queues
 - 📈 Progress tracking and notifications
 - 📋 Failed row handling and reporting
+- 🛡️ Robust error handling with detailed logging
+- 🔧 Custom Import and FailedImportRow models for enhanced functionality
 
 ## Requirements
 
@@ -66,7 +68,7 @@ namespace App\Filament\Imports;
 use App\Models\User;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
-use Illuminate\Support\Collection;
+use HayderHatem\FilamentExcelImport\Models\Import;
 use Illuminate\Support\Facades\Hash;
 
 class UserImporter extends Importer
@@ -84,9 +86,23 @@ class UserImporter extends Importer
                 ->rules(['required', 'email', 'unique:users,email']),
             ImportColumn::make('password')
                 ->requiredMapping()
-                ->rules(['required', 'string', 'min:8'])
-                ->transform(fn (string $value) => Hash::make($value)),
+                ->rules(['required', 'string', 'min:8']),
         ];
+    }
+
+    public static function getLabel(): string
+    {
+        return 'User';
+    }
+
+    public function resolveRecord(): ?User
+    {
+        // You can customize this to update existing records
+        // return User::firstOrNew([
+        //     'email' => $this->data['email'],
+        // ]);
+
+        return new User();
     }
 
     /**
@@ -96,22 +112,30 @@ class UserImporter extends Importer
      */
     public function import(array $data, array $map, array $options = []): void
     {
-        $user = new User();
+        $user = $this->resolveRecord();
         $user->name = $data['name'];
         $user->email = $data['email'];
-        $user->password = $data['password'];
+        $user->password = Hash::make($data['password']);
         $user->save();
     }
 
     /**
      * Define the notification message shown when import is complete
+     * Note: This method must use Filament's Import model in the signature
+     * but can access our custom Import model internally
      */
-    public static function getCompletedNotificationBody(Import $import): string
+    public static function getCompletedNotificationBody(\Filament\Actions\Imports\Models\Import $import): string
     {
-        $body = 'Your user import has completed and ' . number_format($import->successful_rows) . ' ' . str('user')->plural($import->successful_rows) . ' ' . str('was')->plural($import->successful_rows) . ' imported.';
+        // Access our custom Import model for additional functionality
+        $customImport = Import::find($import->id);
+        
+        $body = 'Your user import has completed and ' . 
+                number_format($import->successful_rows ?? $customImport?->imported_rows ?? 0) . ' ' . 
+                str('user')->plural($import->successful_rows ?? $customImport?->imported_rows ?? 0) . ' imported.';
 
-        if ($failedRowsCount = $import->getFailedRowsCount()) {
-            $body .= ' ' . number_format($failedRowsCount) . ' ' . str('row')->plural($failedRowsCount) . ' failed to import.';
+        if ($failedRowsCount = $customImport?->getFailedRowsCount() ?? 0) {
+            $body .= ' ' . number_format($failedRowsCount) . ' ' . 
+                     str('row')->plural($failedRowsCount) . ' failed to import.';
         }
 
         return $body;
@@ -124,31 +148,26 @@ class UserImporter extends Importer
 ```php
 <?php
 
-namespace App\Filament\Resources;
+namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Imports\UserImporter;
-use App\Filament\Resources\UserResource\Pages;
-use App\Models\User;
-use Filament\Forms;
-use Filament\Resources\Resource;
-use Filament\Tables;
-use HayderHatem\FilamentExcelImport\Actions\ImportAction;
+use App\Filament\Resources\UserResource;
+use Filament\Actions;
+use Filament\Resources\Pages\ListRecords;
+use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
 
-class UserResource extends Resource
+class ListUsers extends ListRecords
 {
-    // ... other resource configuration
+    protected static string $resource = UserResource::class;
 
-    public static function table(Table $table): Table
+    protected function getHeaderActions(): array
     {
-        return $table
-            ->columns([
-                // ... your columns
-            ])
-            ->headerActions([
-                // Use the Excel import action
-                ImportAction::make()
-                    ->importer(UserImporter::class)
-            ]);
+        return [
+            Actions\CreateAction::make(),
+            // Use the Excel import action
+            FullImportAction::make()
+                ->importer(UserImporter::class),
+        ];
     }
 }
 ```
@@ -158,7 +177,7 @@ class UserResource extends Resource
 You can customize the Excel import behavior with various configuration options:
 
 ```php
-ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->headerRow(2)                // Use the second row as headers (1-based index)
     ->activeSheet(0)              // Set the default active sheet (0-based index)
@@ -179,17 +198,19 @@ ImportAction::make()
 The Excel import trait automatically detects multiple sheets in an Excel file and allows users to select which sheet to import from:
 
 ```php
-ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->activeSheet(0) // Set the default active sheet (0-based index)
 ```
+
+When an Excel file contains multiple sheets, users will see a dropdown to select which sheet to import from.
 
 ### Header Row Configuration
 
 You can specify which row contains the headers in your Excel file:
 
 ```php
-ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->headerRow(2) // Use the second row as headers (1-based index)
 ```
@@ -206,6 +227,34 @@ The trait supports a wide range of Excel file formats:
 - `.xltm` - Excel 2007+ Macro-Enabled XML Template Format
 - `.csv` - CSV Format (for backward compatibility)
 
+## Enhanced Features
+
+### Custom Import Model
+
+The package includes a custom Import model that extends Filament's default Import model with additional functionality:
+
+- `failedRows()` relationship for accessing failed import rows
+- `getFailedRowsCount()` method for counting failed rows
+- Enhanced error tracking and reporting
+
+### Failed Row Handling
+
+Failed rows are automatically stored in the `failed_import_rows` table with:
+
+- Complete row data
+- Validation errors (if any)
+- Error messages
+- Relationship to the parent import
+
+### Progress Notifications
+
+The package provides enhanced progress notifications that show:
+
+- Number of successfully imported rows
+- Number of failed rows
+- Links to download failed rows (when applicable)
+- Appropriate notification colors based on import status
+
 ## Customizing the Import Process
 
 ### Custom Job Class
@@ -213,44 +262,93 @@ The trait supports a wide range of Excel file formats:
 You can use a custom job class for processing the import:
 
 ```php
-ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->job(CustomImportExcelJob::class)
 ```
 
-### Data Transformation
+### Error Handling
 
-You can transform the data before it's imported using the `transform` method in your importer:
+The package includes robust error handling:
+
+- Failed rows are logged with detailed error information
+- Import progress is tracked even when errors occur
+- Graceful degradation when database operations fail
+- Comprehensive logging for debugging
+
+### Queue Configuration
+
+For large imports, configure your queue settings:
 
 ```php
-public function transform(Collection $rows, array $map, array $options = []): Collection
+// In your importer class
+public function getJobQueue(): ?string
 {
-    return $rows->map(function (array $row) {
-        // Transform the data
-        $row['name'] = ucfirst($row['name']);
-        
-        return $row;
-    });
+    return 'imports'; // Use a dedicated queue for imports
 }
+
+public function getJobConnection(): ?string
+{
+    return 'redis'; // Use Redis for better performance
+}
+```
+
+## Available Actions
+
+The package provides two main action classes:
+
+### FullImportAction
+
+Use this for complete Excel import functionality with all features:
+
+```php
+use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
+
+FullImportAction::make()
+    ->importer(UserImporter::class)
+```
+
+### ImportAction (Alternative)
+
+For basic import functionality:
+
+```php
+use HayderHatem\FilamentExcelImport\Actions\ImportAction;
+
+ImportAction::make()
+    ->importer(UserImporter::class)
 ```
 
 ## Troubleshooting
 
-### File Format Issues
+### Common Issues
 
-If you encounter issues with specific Excel file formats, ensure that:
+1. **"System error, please contact support" message**: 
+   - Ensure your importer class implements the `import()` method
+   - Check that you're using the correct Import model in method signatures
+   - Verify database migrations have been run
 
-1. The PhpSpreadsheet library is properly installed
-2. The file extension matches the actual file format
-3. The file is not password-protected or corrupted
+2. **File Format Issues**:
+   - Ensure PhpSpreadsheet library is properly installed
+   - Check file extension matches the actual file format
+   - Verify the file is not password-protected or corrupted
 
-### Memory Limitations
+3. **Memory Limitations**:
+   - Increase PHP memory limit in your `php.ini` file
+   - Reduce chunk size to process fewer rows per job
+   - Use queue system for background processing
 
-Excel files can be memory-intensive to process. If you encounter memory issues:
+### Debugging
 
-1. Increase the PHP memory limit in your `php.ini` file
-2. Reduce the chunk size to process fewer rows per job
-3. Consider using the queue system to process imports in the background
+Enable detailed logging by checking your Laravel logs when imports fail. The package logs detailed error information to help with debugging.
+
+### Database Issues
+
+If you encounter database-related errors:
+
+1. Run migrations: `php artisan migrate`
+2. Check that all required tables exist: `imports`, `failed_import_rows`
+3. Verify foreign key constraints are properly set up
 
 ## Contributing
 

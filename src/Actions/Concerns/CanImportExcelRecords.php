@@ -9,7 +9,7 @@ use Filament\Actions\Imports\Events\ImportCompleted;
 use Filament\Actions\Imports\Events\ImportStarted;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
-use Filament\Actions\Imports\Models\Import;
+use HayderHatem\FilamentExcelImport\Models\Import;
 use Filament\Forms;
 use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\FileUpload;
@@ -69,6 +69,7 @@ trait CanImportExcelRecords
         $this->modalDescription(fn(ImportAction | ImportTableAction $action): Htmlable => $action->getModalAction('downloadExample'));
         $this->modalSubmitActionLabel(__('filament-actions::import.modal.actions.import.label'));
         $this->groupedIcon(FilamentIcon::resolve('actions::import-action.grouped') ?? 'heroicon-m-arrow-up-tray');
+
         $this->form(fn(ImportAction | ImportTableAction $action): array => array_merge([
             FileUpload::make('file')
                 ->label(__('filament-excel-import::import.modal.form.file.label'))
@@ -240,6 +241,7 @@ trait CanImportExcelRecords
                 ->statePath('columnMap')
                 ->visible(fn(Forms\Get $get): bool => Arr::first((array) ($get('file') ?? [])) instanceof TemporaryUploadedFile),
         ], $action->getImporter()::getOptionsFormComponents()));
+
         $this->action(function (ImportAction | ImportTableAction $action, array $data) {
             /** @var TemporaryUploadedFile $excelFile */
             $excelFile = $data['file'];
@@ -435,6 +437,7 @@ trait CanImportExcelRecords
                     ->send();
             }
         });
+
         $this->registerModalActions([
             (match (true) {
                 $this instanceof TableAction => TableAction::class,
@@ -478,13 +481,16 @@ trait CanImportExcelRecords
                     $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
                     return response()->streamDownload(function () use ($writer) {
                         $writer->save('php://output');
-                    }, __('filament-actions::import.example_file_name', [
-                        'importer' => $this->getImporter()::getLabel(),
-                    ]) . '.xlsx', [
+                    }, __('filament-actions::import.example_csv.file_name', ['importer' => (string) str($this->getImporter())->classBasename()->kebab()]) . '.xlsx', [
                         'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     ]);
                 }),
         ]);
+
+        $this->color('gray');
+        $this->modalWidth('xl');
+        $this->successNotificationTitle(__('filament-actions::import.notifications.started.title'));
+        $this->model(fn(ImportAction | ImportTableAction $action): string => $action->getImporter()::getModel());
     }
 
     /**
@@ -520,6 +526,28 @@ trait CanImportExcelRecords
             return $spreadsheet->getSheet($activeSheet);
         }
         return $spreadsheet->getActiveSheet();
+    }
+
+    public static function getDefaultName(): ?string
+    {
+        return 'import';
+    }
+
+    /**
+     * @param  class-string<Importer>  $importer
+     */
+    public function importer(string $importer): static
+    {
+        $this->importer = $importer;
+        return $this;
+    }
+
+    /**
+     * @return class-string<Importer>
+     */
+    public function getImporter(): string
+    {
+        return $this->importer;
     }
 
     /**
