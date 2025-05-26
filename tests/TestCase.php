@@ -9,6 +9,8 @@ use Filament\Support\SupportServiceProvider;
 use Filament\Tables\TablesServiceProvider;
 use HayderHatem\FilamentExcelImport\FilamentExcelImportServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
 use Livewire\LivewireServiceProvider;
 use Orchestra\Testbench\TestCase as Orchestra;
 
@@ -19,7 +21,7 @@ class TestCase extends Orchestra
         parent::setUp();
 
         Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'HayderHatem\\FilamentExcelImport\\Database\\Factories\\' . class_basename($modelName) . 'Factory'
+            fn(string $modelName) => 'HayderHatem\\FilamentExcelImport\\Database\\Factories\\' . class_basename($modelName) . 'Factory'
         );
     }
 
@@ -52,15 +54,11 @@ class TestCase extends Orchestra
 
     protected function defineDatabaseMigrations()
     {
-        // Run the package migrations
-        $migration = include __DIR__ . '/../database/migrations/2025_05_20_121526_create_imports_table.php';
-        $migration->up();
-
-        $migration = include __DIR__ . '/../database/migrations/2025_05_20_121527_create_failed_import_rows_table.php';
-        $migration->up();
+        // Load package migrations
+        $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
 
         // Create users table for testing
-        $this->app['db']->connection()->getSchemaBuilder()->create('users', function ($table) {
+        Schema::create('users', function (Blueprint $table) {
             $table->id();
             $table->string('name');
             $table->string('email')->unique();
