@@ -5,12 +5,13 @@ namespace HayderHatem\FilamentExcelImport\Tests\Feature;
 use HayderHatem\FilamentExcelImport\Actions\Imports\Jobs\ImportExcel;
 use HayderHatem\FilamentExcelImport\Models\FailedImportRow;
 use HayderHatem\FilamentExcelImport\Models\Import;
-use HayderHatem\FilamentExcelImport\Tests\Helpers\ExcelTestHelper;
 use HayderHatem\FilamentExcelImport\Tests\Importers\TestUserImporter;
 use HayderHatem\FilamentExcelImport\Tests\Models\User;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use PHPUnit\Framework\Attributes\Test;
 
 class ExcelImportIntegrationTest extends TestCase
@@ -33,11 +34,158 @@ class ExcelImportIntegrationTest extends TestCase
         Auth::login($this->authUser);
     }
 
+    private function createUserExcelFile(array $users): string
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Headers
+        $sheet->setCellValue('A1', 'Name');
+        $sheet->setCellValue('B1', 'Email');
+        $sheet->setCellValue('C1', 'Password');
+
+        // Data rows
+        foreach ($users as $index => $user) {
+            $row = $index + 2; // Start from row 2
+            $sheet->setCellValue('A' . $row, $user['name']);
+            $sheet->setCellValue('B' . $row, $user['email']);
+            $sheet->setCellValue('C' . $row, $user['password']);
+        }
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'test_excel_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempFile);
+
+        return $tempFile;
+    }
+
+    private function createInvalidDataExcelFile(): string
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Headers
+        $sheet->setCellValue('A1', 'Name');
+        $sheet->setCellValue('B1', 'Email');
+        $sheet->setCellValue('C1', 'Password');
+
+        // Valid row
+        $sheet->setCellValue('A2', 'John Doe');
+        $sheet->setCellValue('B2', 'john@example.com');
+        $sheet->setCellValue('C2', 'password123');
+
+        // Invalid rows
+        $sheet->setCellValue('A3', ''); // Missing name
+        $sheet->setCellValue('B3', 'jane@example.com');
+        $sheet->setCellValue('C3', 'password456');
+
+        $sheet->setCellValue('A4', 'Bob Johnson');
+        $sheet->setCellValue('B4', 'invalid-email'); // Invalid email
+        $sheet->setCellValue('C4', 'password789');
+
+        $sheet->setCellValue('A5', 'Alice Brown');
+        $sheet->setCellValue('B5', 'alice@example.com');
+        $sheet->setCellValue('C5', '123'); // Password too short
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'test_excel_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempFile);
+
+        return $tempFile;
+    }
+
+    private function createMultiSheetExcelFile(): string
+    {
+        $spreadsheet = new Spreadsheet();
+
+        // First sheet - Users
+        $sheet1 = $spreadsheet->getActiveSheet();
+        $sheet1->setTitle('Users');
+        $sheet1->setCellValue('A1', 'Name');
+        $sheet1->setCellValue('B1', 'Email');
+        $sheet1->setCellValue('C1', 'Password');
+        $sheet1->setCellValue('A2', 'John Doe');
+        $sheet1->setCellValue('B2', 'john@example.com');
+        $sheet1->setCellValue('C2', 'password123');
+
+        // Second sheet - Products
+        $sheet2 = $spreadsheet->createSheet();
+        $sheet2->setTitle('Products');
+        $sheet2->setCellValue('A1', 'Product Name');
+        $sheet2->setCellValue('B1', 'Price');
+        $sheet2->setCellValue('C1', 'Category');
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'test_excel_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempFile);
+
+        return $tempFile;
+    }
+
+    private function createExcelFileWithEmptyCells(): string
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Headers
+        $sheet->setCellValue('A1', 'Name');
+        $sheet->setCellValue('B1', 'Email');
+        $sheet->setCellValue('C1', 'Password');
+
+        // Row with empty cells
+        $sheet->setCellValue('A2', 'John Doe');
+        $sheet->setCellValue('B2', ''); // Empty email
+        $sheet->setCellValue('C2', 'password123');
+
+        // Row with null values
+        $sheet->setCellValue('A3', '');
+        $sheet->setCellValue('B3', 'jane@example.com');
+        $sheet->setCellValue('C3', '');
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'test_excel_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempFile);
+
+        return $tempFile;
+    }
+
+    private function createLargeExcelFile(int $rowCount): string
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Headers
+        $sheet->setCellValue('A1', 'Name');
+        $sheet->setCellValue('B1', 'Email');
+        $sheet->setCellValue('C1', 'Password');
+
+        // Generate data rows
+        for ($i = 2; $i <= $rowCount + 1; $i++) {
+            $userNumber = $i - 1;
+            $sheet->setCellValue('A' . $i, 'User ' . $userNumber);
+            $sheet->setCellValue('B' . $i, 'user' . $userNumber . '@example.com');
+            $sheet->setCellValue('C' . $i, 'password' . $userNumber);
+        }
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'test_excel_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempFile);
+
+        return $tempFile;
+    }
+
+    private function cleanup(string $filePath): void
+    {
+        if (file_exists($filePath)) {
+            unlink($filePath);
+        }
+    }
+
     #[Test]
     public function it_can_import_users_from_excel_file_successfully()
     {
         // Create test Excel file
-        $excelFile = ExcelTestHelper::createUserExcelFile([
+        $excelFile = $this->createUserExcelFile([
             ['name' => 'John Doe', 'email' => 'john@example.com', 'password' => 'password123'],
             ['name' => 'Jane Smith', 'email' => 'jane@example.com', 'password' => 'password456'],
             ['name' => 'Bob Johnson', 'email' => 'bob@example.com', 'password' => 'password789'],
@@ -91,7 +239,7 @@ class ExcelImportIntegrationTest extends TestCase
             $this->assertDatabaseHas('users', ['email' => 'jane@example.com']);
             $this->assertDatabaseHas('users', ['email' => 'bob@example.com']);
         } finally {
-            ExcelTestHelper::cleanup($excelFile);
+            $this->cleanup($excelFile);
         }
     }
 
@@ -99,7 +247,7 @@ class ExcelImportIntegrationTest extends TestCase
     public function it_handles_validation_errors_during_import()
     {
         // Create test Excel file with invalid data
-        $excelFile = ExcelTestHelper::createInvalidDataExcelFile();
+        $excelFile = $this->createInvalidDataExcelFile();
 
         try {
             // Create import record
@@ -154,7 +302,7 @@ class ExcelImportIntegrationTest extends TestCase
             // Check that failed rows were recorded
             $this->assertEquals(3, FailedImportRow::count());
         } finally {
-            ExcelTestHelper::cleanup($excelFile);
+            $this->cleanup($excelFile);
         }
     }
 
@@ -162,7 +310,7 @@ class ExcelImportIntegrationTest extends TestCase
     public function it_handles_duplicate_email_validation()
     {
         // Create test Excel file with duplicate emails
-        $excelFile = ExcelTestHelper::createUserExcelFile([
+        $excelFile = $this->createUserExcelFile([
             ['name' => 'John Doe', 'email' => 'john@example.com', 'password' => 'password123'],
             ['name' => 'Jane Smith', 'email' => 'john@example.com', 'password' => 'password456'], // Duplicate email
         ]);
@@ -217,7 +365,7 @@ class ExcelImportIntegrationTest extends TestCase
             $this->assertEquals($import->id, $failedRow->import_id);
             $this->assertEquals(['name' => 'Jane Smith', 'email' => 'john@example.com', 'password' => 'password456'], $failedRow->data);
         } finally {
-            ExcelTestHelper::cleanup($excelFile);
+            $this->cleanup($excelFile);
         }
     }
 
@@ -225,7 +373,7 @@ class ExcelImportIntegrationTest extends TestCase
     public function it_can_import_from_specific_sheet()
     {
         // Create multi-sheet Excel file
-        $excelFile = ExcelTestHelper::createMultiSheetExcelFile();
+        $excelFile = $this->createMultiSheetExcelFile();
 
         try {
             // Create import record
@@ -270,7 +418,7 @@ class ExcelImportIntegrationTest extends TestCase
             $this->assertEquals(2, User::count()); // 1 imported + 1 auth user
             $this->assertDatabaseHas('users', ['email' => 'john@example.com']);
         } finally {
-            ExcelTestHelper::cleanup($excelFile);
+            $this->cleanup($excelFile);
         }
     }
 
@@ -278,7 +426,7 @@ class ExcelImportIntegrationTest extends TestCase
     public function it_handles_empty_cells_gracefully()
     {
         // Create Excel file with empty cells
-        $excelFile = ExcelTestHelper::createExcelFileWithEmptyCells();
+        $excelFile = $this->createExcelFileWithEmptyCells();
 
         try {
             // Create import record
@@ -327,7 +475,7 @@ class ExcelImportIntegrationTest extends TestCase
             // Check that failed rows were recorded
             $this->assertEquals(2, FailedImportRow::count());
         } finally {
-            ExcelTestHelper::cleanup($excelFile);
+            $this->cleanup($excelFile);
         }
     }
 
@@ -335,7 +483,7 @@ class ExcelImportIntegrationTest extends TestCase
     public function it_can_process_large_imports_in_chunks()
     {
         // Create large Excel file
-        $excelFile = ExcelTestHelper::createLargeExcelFile(100); // 100 rows
+        $excelFile = $this->createLargeExcelFile(100); // 100 rows
 
         try {
             // Create import record
@@ -386,7 +534,7 @@ class ExcelImportIntegrationTest extends TestCase
             $this->assertDatabaseHas('users', ['email' => 'user1@example.com']);
             $this->assertDatabaseHas('users', ['email' => 'user25@example.com']);
         } finally {
-            ExcelTestHelper::cleanup($excelFile);
+            $this->cleanup($excelFile);
         }
     }
 
