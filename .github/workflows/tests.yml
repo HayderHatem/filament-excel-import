@@ -84,7 +84,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
+          php-version: 8.3
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
           coverage: none
 
@@ -96,8 +96,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: dependencies-php-8.2-composer-${{ hashFiles('composer.json') }}
-          restore-keys: dependencies-php-8.2-composer-
+          key: dependencies-php-8.3-composer-${{ hashFiles('composer.json') }}
+          restore-keys: dependencies-php-8.3-composer-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction
@@ -120,7 +120,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
+          php-version: 8.3
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
           coverage: none
 
@@ -132,8 +132,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: dependencies-php-8.2-composer-${{ hashFiles('composer.json') }}
-          restore-keys: dependencies-php-8.2-composer-
+          key: dependencies-php-8.3-composer-${{ hashFiles('composer.json') }}
+          restore-keys: dependencies-php-8.3-composer-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction
@@ -156,7 +156,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
+          php-version: 8.3
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
           coverage: none
 
@@ -168,8 +168,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: dependencies-php-8.2-composer-${{ hashFiles('composer.json') }}
-          restore-keys: dependencies-php-8.2-composer-
+          key: dependencies-php-8.3-composer-${{ hashFiles('composer.json') }}
+          restore-keys: dependencies-php-8.3-composer-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction
@@ -189,7 +189,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: 8.2
+          php-version: 8.3
           extensions: dom, curl, libxml, mbstring, zip, pcntl, pdo, sqlite, pdo_sqlite, bcmath, soap, intl, gd, exif, iconv, imagick, fileinfo
           coverage: none
 
@@ -201,8 +201,8 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ steps.composer-cache.outputs.dir }}
-          key: dependencies-php-8.2-composer-${{ hashFiles('composer.json') }}
-          restore-keys: dependencies-php-8.2-composer-
+          key: dependencies-php-8.3-composer-${{ hashFiles('composer.json') }}
+          restore-keys: dependencies-php-8.3-composer-
 
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction
