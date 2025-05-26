@@ -2,7 +2,12 @@
 
 namespace HayderHatem\FilamentExcelImport\Tests;
 
+use Filament\Actions\ActionsServiceProvider;
 use Filament\FilamentServiceProvider;
+use Filament\Forms\FormsServiceProvider;
+use Filament\Notifications\NotificationsServiceProvider;
+use Filament\Support\SupportServiceProvider;
+use Filament\Tables\TablesServiceProvider;
 use HayderHatem\FilamentExcelImport\FilamentExcelImportServiceProvider;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Livewire\LivewireServiceProvider;
@@ -23,7 +28,12 @@ class TestCase extends Orchestra
     {
         return [
             LivewireServiceProvider::class,
+            SupportServiceProvider::class,
             FilamentServiceProvider::class,
+            FormsServiceProvider::class,
+            TablesServiceProvider::class,
+            NotificationsServiceProvider::class,
+            ActionsServiceProvider::class,
             FilamentExcelImportServiceProvider::class,
         ];
     }
