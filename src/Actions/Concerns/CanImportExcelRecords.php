@@ -9,26 +9,23 @@ use Filament\Actions\Imports\Events\ImportCompleted;
 use Filament\Actions\Imports\Events\ImportStarted;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
-use HayderHatem\FilamentExcelImport\Models\Import;
 use Filament\Forms;
 use Filament\Forms\Components\Fieldset;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Actions\Action as NotificationAction;
 use Filament\Notifications\Notification;
-use Filament\Support\ChunkIterator;
 use Filament\Support\Facades\FilamentIcon;
 use Filament\Tables\Actions\Action as TableAction;
 use Filament\Tables\Actions\ImportAction as ImportTableAction;
 use HayderHatem\FilamentExcelImport\Actions\Imports\Jobs\ImportExcel;
+use HayderHatem\FilamentExcelImport\Models\Import;
 use Illuminate\Bus\PendingBatch;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Contracts\Support\Htmlable;
-use Illuminate\Filesystem\AwsS3V3Adapter;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Number;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\File;
@@ -64,13 +61,13 @@ trait CanImportExcelRecords
     protected function setUp(): void
     {
         parent::setUp();
-        $this->label(fn(ImportAction | ImportTableAction $action): string => __('filament-actions::import.label', ['label' => $action->getPluralModelLabel()]));
-        $this->modalHeading(fn(ImportAction | ImportTableAction $action): string => __('filament-actions::import.modal.heading', ['label' => $action->getPluralModelLabel()]));
-        $this->modalDescription(fn(ImportAction | ImportTableAction $action): Htmlable => $action->getModalAction('downloadExample'));
+        $this->label(fn (ImportAction | ImportTableAction $action): string => __('filament-actions::import.label', ['label' => $action->getPluralModelLabel()]));
+        $this->modalHeading(fn (ImportAction | ImportTableAction $action): string => __('filament-actions::import.modal.heading', ['label' => $action->getPluralModelLabel()]));
+        $this->modalDescription(fn (ImportAction | ImportTableAction $action): Htmlable => $action->getModalAction('downloadExample'));
         $this->modalSubmitActionLabel(__('filament-actions::import.modal.actions.import.label'));
         $this->groupedIcon(FilamentIcon::resolve('actions::import-action.grouped') ?? 'heroicon-m-arrow-up-tray');
 
-        $this->form(fn(ImportAction | ImportTableAction $action): array => array_merge([
+        $this->form(fn (ImportAction | ImportTableAction $action): array => array_merge([
             FileUpload::make('file')
                 ->label(__('filament-excel-import::import.modal.form.file.label'))
                 ->placeholder(__('filament-excel-import::import.modal.form.file.placeholder'))
@@ -92,12 +89,15 @@ trait CanImportExcelRecords
                     if (! $state instanceof TemporaryUploadedFile) {
                         return;
                     }
+
                     try {
                         $livewire->validateOnly($component->getStatePath());
                     } catch (ValidationException $exception) {
                         $component->state([]);
+
                         throw $exception;
                     }
+
                     try {
                         $spreadsheet = $this->getUploadedFileSpreadsheet($state);
                         if (! $spreadsheet) {
@@ -128,6 +128,7 @@ trait CanImportExcelRecords
                                     $column->getGuesses(),
                                 ),
                             )] ?? null;
+
                             return $carry;
                         }, []));
 
@@ -155,13 +156,14 @@ trait CanImportExcelRecords
                 ->hiddenLabel(),
             Select::make('activeSheet')
                 ->label(__('Sheet'))
-                ->options(fn(Forms\Get $get): array => $get('availableSheets') ?? [])
-                ->visible(fn(Forms\Get $get): bool => is_array($get('availableSheets')) && count($get('availableSheets')) > 1)
+                ->options(fn (Forms\Get $get): array => $get('availableSheets') ?? [])
+                ->visible(fn (Forms\Get $get): bool => is_array($get('availableSheets')) && count($get('availableSheets')) > 1)
                 ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) use ($action) {
                     $file = Arr::first((array) ($get('file') ?? []));
                     if (! $file instanceof TemporaryUploadedFile) {
                         return;
                     }
+
                     try {
                         $spreadsheet = $this->getUploadedFileSpreadsheet($file);
                         if (! $spreadsheet) {
@@ -192,6 +194,7 @@ trait CanImportExcelRecords
                                     $column->getGuesses(),
                                 ),
                             )] ?? null;
+
                             return $carry;
                         }, []));
                     } catch (ReaderException $e) {
@@ -210,6 +213,7 @@ trait CanImportExcelRecords
                     if (! $file instanceof TemporaryUploadedFile) {
                         return [];
                     }
+
                     try {
                         $spreadsheet = $this->getUploadedFileSpreadsheet($file);
                         if (! $spreadsheet) {
@@ -230,8 +234,9 @@ trait CanImportExcelRecords
                             }
                         }
                         $excelColumnOptions = array_combine($excelColumns, $excelColumns);
+
                         return array_map(
-                            fn(ImportColumn $column): Select => $column->getSelect()->options($excelColumnOptions),
+                            fn (ImportColumn $column): Select => $column->getSelect()->options($excelColumnOptions),
                             $action->getImporter()::getColumns(),
                         );
                     } catch (ReaderException $e) {
@@ -239,7 +244,7 @@ trait CanImportExcelRecords
                     }
                 })
                 ->statePath('columnMap')
-                ->visible(fn(Forms\Get $get): bool => Arr::first((array) ($get('file') ?? [])) instanceof TemporaryUploadedFile),
+                ->visible(fn (Forms\Get $get): bool => Arr::first((array) ($get('file') ?? [])) instanceof TemporaryUploadedFile),
         ], $action->getImporter()::getOptionsFormComponents()));
 
         $this->action(function (ImportAction | ImportTableAction $action, array $data) {
@@ -299,6 +304,7 @@ trait CanImportExcelRecords
                         ]))
                         ->danger()
                         ->send();
+
                     return;
                 }
 
@@ -330,7 +336,7 @@ trait CanImportExcelRecords
 
                 // Create import chunks with import ID instead of full model
                 $importChunks = collect($rows)->chunk($action->getChunkSize())
-                    ->map(fn($chunk) => app($action->getJob() ?? ImportExcel::class, [
+                    ->map(fn ($chunk) => app($action->getJob() ?? ImportExcel::class, [
                         'importId' => $importId,
                         'rows' => base64_encode(serialize($chunk->all())),
                         'columnMap' => $columnMap,
@@ -349,21 +355,21 @@ trait CanImportExcelRecords
                     ->allowFailures()
                     ->when(
                         filled($jobQueue = $importer->getJobQueue()),
-                        fn(PendingBatch $batch) => $batch->onQueue($jobQueue),
+                        fn (PendingBatch $batch) => $batch->onQueue($jobQueue),
                     )
                     ->when(
                         filled($jobConnection = $importer->getJobConnection()),
-                        fn(PendingBatch $batch) => $batch->onConnection($jobConnection),
+                        fn (PendingBatch $batch) => $batch->onConnection($jobConnection),
                     )
                     ->when(
                         filled($jobBatchName = $importer->getJobBatchName()),
-                        fn(PendingBatch $batch) => $batch->name($jobBatchName),
+                        fn (PendingBatch $batch) => $batch->name($jobBatchName),
                     )
                     ->finally(function () use ($importId, $columnMap, $options, $jobConnection) {
                         // Retrieve fresh import from database in the callback to avoid serialization issues
                         $import = Import::query()->find($importId);
 
-                        if (!$import) {
+                        if (! $import) {
                             return;
                         }
 
@@ -384,19 +390,19 @@ trait CanImportExcelRecords
                             ->body($import->importer::getCompletedNotificationBody($import))
                             ->when(
                                 ! $failedRowsCount,
-                                fn(Notification $notification) => $notification->success(),
+                                fn (Notification $notification) => $notification->success(),
                             )
                             ->when(
                                 $failedRowsCount && ($failedRowsCount < $import->total_rows),
-                                fn(Notification $notification) => $notification->warning(),
+                                fn (Notification $notification) => $notification->warning(),
                             )
                             ->when(
                                 $failedRowsCount === $import->total_rows,
-                                fn(Notification $notification) => $notification->danger(),
+                                fn (Notification $notification) => $notification->danger(),
                             )
                             ->when(
                                 $failedRowsCount,
-                                fn(Notification $notification) => $notification->actions([
+                                fn (Notification $notification) => $notification->actions([
                                     NotificationAction::make('downloadFailedRowsCsv')
                                         ->label(trans_choice('filament-actions::import.notifications.completed.actions.download_failed_rows_csv.label', $failedRowsCount, [
                                             'count' => Number::format($failedRowsCount),
@@ -409,10 +415,10 @@ trait CanImportExcelRecords
                             ->when(
                                 ($jobConnection === 'sync') ||
                                     (blank($jobConnection) && (config('queue.default') === 'sync')),
-                                fn(Notification $notification) => $notification
+                                fn (Notification $notification) => $notification
                                     ->persistent()
                                     ->send(),
-                                fn(Notification $notification) => $notification->sendToDatabase($import->user, isEventDispatched: true),
+                                fn (Notification $notification) => $notification->sendToDatabase($import->user, isEventDispatched: true),
                             );
                     })
                     ->dispatch();
@@ -458,12 +464,12 @@ trait CanImportExcelRecords
                     }
                     // Add example data
                     $columnExamples = array_map(
-                        fn(ImportColumn $column): array => $column->getExamples(),
+                        fn (ImportColumn $column): array => $column->getExamples(),
                         $columns,
                     );
                     $exampleRowsCount = array_reduce(
                         $columnExamples,
-                        fn(int $count, array $exampleData): int => max($count, count($exampleData)),
+                        fn (int $count, array $exampleData): int => max($count, count($exampleData)),
                         initial: 0,
                     );
                     for ($rowIndex = 0; $rowIndex < $exampleRowsCount; $rowIndex++) {
@@ -479,6 +485,7 @@ trait CanImportExcelRecords
                     }
                     // Create Excel writer
                     $writer = IOFactory::createWriter($spreadsheet, 'Xlsx');
+
                     return response()->streamDownload(function () use ($writer) {
                         $writer->save('php://output');
                     }, __('filament-actions::import.example_csv.file_name', ['importer' => (string) str($this->getImporter())->classBasename()->kebab()]) . '.xlsx', [
@@ -490,7 +497,7 @@ trait CanImportExcelRecords
         $this->color('gray');
         $this->modalWidth('xl');
         $this->successNotificationTitle(__('filament-actions::import.notifications.started.title'));
-        $this->model(fn(ImportAction | ImportTableAction $action): string => $action->getImporter()::getModel());
+        $this->model(fn (ImportAction | ImportTableAction $action): string => $action->getImporter()::getModel());
     }
 
     /**
@@ -502,9 +509,11 @@ trait CanImportExcelRecords
         if (! file_exists($path)) {
             return null;
         }
+
         try {
             $reader = IOFactory::createReaderForFile($path);
             $reader->setReadDataOnly(true);
+
             return $reader->load($path);
         } catch (ReaderException $e) {
             Notification::make()
@@ -512,6 +521,7 @@ trait CanImportExcelRecords
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
+
             return null;
         }
     }
@@ -525,6 +535,7 @@ trait CanImportExcelRecords
         if ($activeSheet !== null) {
             return $spreadsheet->getSheet($activeSheet);
         }
+
         return $spreadsheet->getActiveSheet();
     }
 
@@ -539,6 +550,7 @@ trait CanImportExcelRecords
     public function importer(string $importer): static
     {
         $this->importer = $importer;
+
         return $this;
     }
 
@@ -566,6 +578,7 @@ trait CanImportExcelRecords
     public function job(?string $job): static
     {
         $this->job = $job;
+
         return $this;
     }
 
@@ -585,6 +598,7 @@ trait CanImportExcelRecords
     public function chunkSize(int | Closure $size): static
     {
         $this->chunkSize = $size;
+
         return $this;
     }
 
@@ -604,6 +618,7 @@ trait CanImportExcelRecords
     public function maxRows(int | Closure | null $count): static
     {
         $this->maxRows = $count;
+
         return $this;
     }
 
@@ -623,6 +638,7 @@ trait CanImportExcelRecords
     public function headerRow(int | Closure | null $row): static
     {
         $this->headerRow = $row;
+
         return $this;
     }
 
@@ -642,6 +658,7 @@ trait CanImportExcelRecords
     public function activeSheet(int | Closure | null $sheet): static
     {
         $this->activeSheet = $sheet;
+
         return $this;
     }
 
@@ -663,6 +680,7 @@ trait CanImportExcelRecords
     public function options(array | Closure $options): static
     {
         $this->options = $options;
+
         return $this;
     }
 
@@ -701,6 +719,7 @@ trait CanImportExcelRecords
     public function fileValidationRules(array $rules): static
     {
         $this->fileValidationRules = $rules;
+
         return $this;
     }
 }

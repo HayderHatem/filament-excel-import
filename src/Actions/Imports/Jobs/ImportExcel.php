@@ -2,7 +2,6 @@
 
 namespace HayderHatem\FilamentExcelImport\Actions\Imports\Jobs;
 
-use Filament\Actions\Imports\ImportColumn;
 use HayderHatem\FilamentExcelImport\Models\Import;
 use HayderHatem\FilamentExcelImport\Traits\HasImportProgressNotifications;
 use Illuminate\Bus\Batchable;
@@ -12,8 +11,6 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Arr;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
@@ -38,7 +35,8 @@ class ImportExcel implements ShouldQueue
         public string $rows,
         public array $columnMap,
         public array $options = [],
-    ) {}
+    ) {
+    }
 
     public function handle(): void
     {
@@ -83,7 +81,7 @@ class ImportExcel implements ShouldQueue
 
         foreach ($processedRows as $processedRow) {
             try {
-                DB::transaction(fn() => $importer->import(
+                DB::transaction(fn () => $importer->import(
                     $processedRow,
                     $this->columnMap,
                     $this->options,
@@ -96,7 +94,7 @@ class ImportExcel implements ShouldQueue
                 try {
                     $import->failedRows()->create([
                         'data' => array_map(
-                            fn($value) => is_null($value) ? null : (string) $value,
+                            fn ($value) => is_null($value) ? null : (string) $value,
                             $processedRow,
                         ),
                         'validation_errors' => [],

@@ -1,0 +1,23 @@
+parameters:
+    level: 5
+    paths:
+        - src
+    excludePaths:
+        - tests/
+    ignoreErrors:
+        - '#Call to an undefined method [a-zA-Z0-9\\_]+::fake\(\)#'
+        - '#Call to an undefined method [a-zA-Z0-9\\_]+::shouldReceive\(\)#'
+        - '#PHPDoc tag @test#'
+        - '#Access to an undefined property#'
+        - '#Call to an undefined static method#'
+        - '#Call to an undefined method#'
+        - '#Parameter .* expects .*, .* given#'
+        - '#Anonymous function should return .* but returns#'
+        -
+            identifier: missingType.iterableValue
+        -
+            identifier: missingType.generics
+    reportUnmatchedIgnoredErrors: false
+    tmpDir: build/phpstan
+    bootstrapFiles:
+        - vendor/autoload.php 

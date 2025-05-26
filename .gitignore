@@ -1,0 +1,36 @@
+# Dependencies
+/vendor/
+composer.lock
+
+# Build artifacts
+/build/
+/coverage/
+/.phpunit.cache/
+
+# IDE files
+/.idea/
+/.vscode/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+/temp/
+
+# Log files
+*.log
+
+# Coverage reports
+coverage.clover
+coverage.xml
+
+# PHPStan cache
+/phpstan.cache
+
+# PHP CS Fixer cache
+.php-cs-fixer.cache 

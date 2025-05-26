@@ -7,10 +7,36 @@
             "HayderHatem\\FilamentExcelImport\\": "src/"
         }
     },
+    "autoload-dev": {
+        "psr-4": {
+            "HayderHatem\\FilamentExcelImport\\Tests\\": "tests/"
+        }
+    },
     "require": {
         "php": "^8.1",
         "filament/filament": "^3.0",
         "phpoffice/phpspreadsheet": "^1.27"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^8.0|^9.0",
+        "phpunit/phpunit": "^10.0",
+        "mockery/mockery": "^1.5",
+        "friendsofphp/php-cs-fixer": "^3.0",
+        "phpstan/phpstan": "^1.0",
+        "phpstan/phpstan-phpunit": "^1.0"
+    },
+    "scripts": {
+        "test": "vendor/bin/phpunit",
+        "test-coverage": "vendor/bin/phpunit --coverage-html coverage",
+        "test-runner": "php test-runner.php",
+        "cs-fix": "vendor/bin/php-cs-fixer fix",
+        "cs-check": "vendor/bin/php-cs-fixer fix --dry-run --diff",
+        "phpstan": "vendor/bin/phpstan analyse",
+        "ci": [
+            "@cs-check",
+            "@phpstan",
+            "@test"
+        ]
     },
     "extra": {
         "laravel": {
@@ -18,5 +44,10 @@
                 "HayderHatem\\FilamentExcelImport\\FilamentExcelImportServiceProvider"
             ]
         }
-    }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

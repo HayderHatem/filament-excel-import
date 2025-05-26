@@ -2,8 +2,8 @@
 
 namespace HayderHatem\FilamentExcelImport;
 
-use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\ServiceProvider;
 
 class FilamentExcelImportServiceProvider extends ServiceProvider
 {
@@ -15,8 +15,8 @@ class FilamentExcelImportServiceProvider extends ServiceProvider
         );
 
         // Ensure migration directory exists
-        if (!File::exists(__DIR__ . '/../database/migrations')) {
-            File::makeDirectory(__DIR__ . '/../database/migrations', 0755, true);
+        if (! File::exists(__DIR__ . '/../database/migrations')) {
+            File::makeDirectory(__DIR__ . '/../database/migrations', 0o755, true);
         }
 
         // Load migrations with timestamps
@@ -48,13 +48,13 @@ class FilamentExcelImportServiceProvider extends ServiceProvider
             $filename = basename($file);
 
             // Check if the migration has a timestamp (e.g., 2023_01_01_000000_)
-            if (!preg_match('/^\d{4}_\d{2}_\d{2}_\d{6}_/', $filename)) {
+            if (! preg_match('/^\d{4}_\d{2}_\d{2}_\d{6}_/', $filename)) {
                 $timestamp = date('Y_m_d_His');
                 $newFilename = $timestamp . '_' . $filename;
                 $newPath = __DIR__ . '/../database/migrations/' . $newFilename;
 
                 // Rename the file if it doesn't have a timestamp
-                if (!File::exists($newPath)) {
+                if (! File::exists($newPath)) {
                     File::move($file, $newPath);
                 }
             }

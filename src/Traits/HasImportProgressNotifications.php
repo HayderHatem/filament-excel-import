@@ -2,8 +2,8 @@
 
 namespace HayderHatem\FilamentExcelImport\Traits;
 
-use HayderHatem\FilamentExcelImport\Models\Import;
 use Filament\Notifications\Notification;
+use HayderHatem\FilamentExcelImport\Models\Import;
 use Illuminate\Contracts\Auth\Authenticatable;
 
 trait HasImportProgressNotifications
@@ -27,15 +27,15 @@ trait HasImportProgressNotifications
             ->body($import->importer::getCompletedNotificationBody($import))
             ->when(
                 ! $failedRowsCount,
-                fn(Notification $notification) => $notification->success(),
+                fn (Notification $notification) => $notification->success(),
             )
             ->when(
                 $failedRowsCount && ($failedRowsCount < $import->total_rows),
-                fn(Notification $notification) => $notification->warning(),
+                fn (Notification $notification) => $notification->warning(),
             )
             ->when(
                 $failedRowsCount === $import->total_rows,
-                fn(Notification $notification) => $notification->danger(),
+                fn (Notification $notification) => $notification->danger(),
             )
             ->sendToDatabase($user);
     }
