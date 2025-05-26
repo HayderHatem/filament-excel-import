@@ -3,7 +3,6 @@
 namespace HayderHatem\FilamentExcelImport\Tests;
 
 use Filament\Actions\ActionsServiceProvider;
-use Filament\FilamentServiceProvider;
 use Filament\Forms\FormsServiceProvider;
 use Filament\Notifications\NotificationsServiceProvider;
 use Filament\Support\SupportServiceProvider;
@@ -29,7 +28,6 @@ class TestCase extends Orchestra
         return [
             LivewireServiceProvider::class,
             SupportServiceProvider::class,
-            FilamentServiceProvider::class,
             FormsServiceProvider::class,
             TablesServiceProvider::class,
             NotificationsServiceProvider::class,
