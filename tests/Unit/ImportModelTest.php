@@ -5,14 +5,16 @@ namespace HayderHatem\FilamentExcelImport\Tests\Unit;
 use HayderHatem\FilamentExcelImport\Models\FailedImportRow;
 use HayderHatem\FilamentExcelImport\Models\Import;
 use HayderHatem\FilamentExcelImport\Tests\Importers\TestUserImporter;
+use HayderHatem\FilamentExcelImport\Tests\Models\User;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class ImportModelTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @test */
+    #[Test]
     public function it_can_create_an_import_record()
     {
         $import = Import::create([
@@ -31,7 +33,7 @@ class ImportModelTest extends TestCase
         $this->assertEquals(10, $import->total_rows);
     }
 
-    /** @test */
+    #[Test]
     public function it_has_failed_rows_relationship()
     {
         $import = Import::create([
@@ -52,7 +54,7 @@ class ImportModelTest extends TestCase
         $this->assertEquals($failedRow->id, $import->failedRows->first()->id);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_count_failed_rows()
     {
         $import = Import::create([
@@ -80,7 +82,7 @@ class ImportModelTest extends TestCase
         $this->assertEquals(2, $import->getFailedRowsCount());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_get_importer_instance()
     {
         $import = Import::create([
@@ -98,7 +100,7 @@ class ImportModelTest extends TestCase
         $this->assertInstanceOf(TestUserImporter::class, $importer);
     }
 
-    /** @test */
+    #[Test]
     public function it_extends_filament_import_model()
     {
         $import = new Import();

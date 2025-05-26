@@ -11,6 +11,7 @@ use HayderHatem\FilamentExcelImport\Tests\Models\User;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use PHPUnit\Framework\Attributes\Test;
 
 class ExcelImportIntegrationTest extends TestCase
 {
@@ -32,7 +33,7 @@ class ExcelImportIntegrationTest extends TestCase
         Auth::login($this->authUser);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_import_users_from_excel_file_successfully()
     {
         // Create test Excel file
@@ -94,7 +95,7 @@ class ExcelImportIntegrationTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_validation_errors_during_import()
     {
         // Create test Excel file with invalid data
@@ -157,7 +158,7 @@ class ExcelImportIntegrationTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_duplicate_email_validation()
     {
         // Create test Excel file with duplicate emails
@@ -220,7 +221,7 @@ class ExcelImportIntegrationTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function it_can_import_from_specific_sheet()
     {
         // Create multi-sheet Excel file
@@ -273,7 +274,7 @@ class ExcelImportIntegrationTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_empty_cells_gracefully()
     {
         // Create Excel file with empty cells
@@ -330,7 +331,7 @@ class ExcelImportIntegrationTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function it_can_process_large_imports_in_chunks()
     {
         // Create large Excel file
@@ -389,7 +390,7 @@ class ExcelImportIntegrationTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function it_generates_correct_completion_notification_message()
     {
         // Create import with some successful and failed rows

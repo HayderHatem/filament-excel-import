@@ -19,7 +19,7 @@ class TestCase extends Orchestra
         parent::setUp();
 
         Factory::guessFactoryNamesUsing(
-            fn (string $modelName) => 'HayderHatem\\FilamentExcelImport\\Database\\Factories\\' . class_basename($modelName) . 'Factory'
+            fn(string $modelName) => 'HayderHatem\\FilamentExcelImport\\Database\\Factories\\' . class_basename($modelName) . 'Factory'
         );
     }
 
@@ -48,8 +48,11 @@ class TestCase extends Orchestra
         // Set up Filament configuration
         config()->set('filament.default_filesystem_disk', 'local');
         config()->set('app.key', 'base64:' . base64_encode(random_bytes(32)));
+    }
 
-        // Run the migrations
+    protected function defineDatabaseMigrations()
+    {
+        // Run the package migrations
         $migration = include __DIR__ . '/../database/migrations/2025_05_20_121526_create_imports_table.php';
         $migration->up();
 
@@ -57,7 +60,7 @@ class TestCase extends Orchestra
         $migration->up();
 
         // Create users table for testing
-        $app['db']->connection()->getSchemaBuilder()->create('users', function ($table) {
+        $this->app['db']->connection()->getSchemaBuilder()->create('users', function ($table) {
             $table->id();
             $table->string('name');
             $table->string('email')->unique();

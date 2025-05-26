@@ -9,12 +9,13 @@ use HayderHatem\FilamentExcelImport\Tests\Models\User;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Auth;
+use PHPUnit\Framework\Attributes\Test;
 
 class ImportExcelJobTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @test */
+    #[Test]
     public function it_can_process_import_rows_successfully()
     {
         // Create a test user for authentication
@@ -71,7 +72,7 @@ class ImportExcelJobTest extends TestCase
         $this->assertDatabaseHas('users', ['email' => 'jane@example.com']);
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_failed_rows_gracefully()
     {
         // Create a test user for authentication
@@ -133,7 +134,7 @@ class ImportExcelJobTest extends TestCase
         ]);
     }
 
-    /** @test */
+    #[Test]
     public function it_skips_processing_when_batch_is_cancelled()
     {
         // Create a test user for authentication
@@ -165,10 +166,10 @@ class ImportExcelJobTest extends TestCase
         ];
 
         // Create a job with a mock batch that returns cancelled
-        $job = new class ($import->id, base64_encode(serialize($rows)), $columnMap, []) extends ImportExcel {
+        $job = new class($import->id, base64_encode(serialize($rows)), $columnMap, []) extends ImportExcel {
             public function batch()
             {
-                return new class () {
+                return new class() {
                     public function cancelled()
                     {
                         return true;

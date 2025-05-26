@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PHPUnit\Framework\Attributes\Test;
 
 class FullImportActionTest extends TestCase
 {
@@ -21,7 +22,13 @@ class FullImportActionTest extends TestCase
         Storage::fake('local');
     }
 
-    /** @test */
+    private function createImportAction(): FullImportAction
+    {
+        return FullImportAction::make('import')
+            ->importer(TestUserImporter::class);
+    }
+
+    #[Test]
     public function it_can_create_full_import_action(): void
     {
         $action = FullImportAction::make()
@@ -31,7 +38,7 @@ class FullImportActionTest extends TestCase
         $this->assertEquals(TestUserImporter::class, $action->getImporter());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_configure_header_row(): void
     {
         $action = FullImportAction::make()
@@ -41,7 +48,7 @@ class FullImportActionTest extends TestCase
         $this->assertEquals(3, $action->getHeaderRow());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_configure_active_sheet(): void
     {
         $action = FullImportAction::make()
@@ -51,7 +58,7 @@ class FullImportActionTest extends TestCase
         $this->assertEquals(1, $action->getActiveSheet());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_configure_chunk_size(): void
     {
         $action = FullImportAction::make()
@@ -61,7 +68,7 @@ class FullImportActionTest extends TestCase
         $this->assertEquals(100, $action->getChunkSize());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_configure_max_rows(): void
     {
         $action = FullImportAction::make()
@@ -71,7 +78,7 @@ class FullImportActionTest extends TestCase
         $this->assertEquals(1000, $action->getMaxRows());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_configure_options(): void
     {
         $options = ['update_existing' => true, 'skip_duplicates' => false];
@@ -83,7 +90,7 @@ class FullImportActionTest extends TestCase
         $this->assertEquals($options, $action->getOptions());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_configure_file_validation_rules(): void
     {
         $rules = ['max:10240', 'mimes:xlsx,xls'];
@@ -99,7 +106,7 @@ class FullImportActionTest extends TestCase
         $this->assertContains('mimes:xlsx,xls', $validationRules);
     }
 
-    /** @test */
+    #[Test]
     public function it_has_correct_default_values(): void
     {
         $action = FullImportAction::make()
@@ -113,7 +120,7 @@ class FullImportActionTest extends TestCase
         $this->assertEquals([], $action->getOptions()); // Empty options by default
     }
 
-    /** @test */
+    #[Test]
     public function it_can_chain_configuration_methods(): void
     {
         $action = FullImportAction::make()
@@ -136,7 +143,7 @@ class FullImportActionTest extends TestCase
         $this->assertContains('max:5120', $validationRules);
     }
 
-    /** @test */
+    #[Test]
     public function it_extends_filament_import_action(): void
     {
         $action = FullImportAction::make()
@@ -145,7 +152,7 @@ class FullImportActionTest extends TestCase
         $this->assertInstanceOf(\Filament\Actions\ImportAction::class, $action);
     }
 
-    /** @test */
+    #[Test]
     public function it_uses_excel_import_trait(): void
     {
         $action = FullImportAction::make()
@@ -155,7 +162,7 @@ class FullImportActionTest extends TestCase
         $this->assertContains('HayderHatem\FilamentExcelImport\Actions\Concerns\CanImportExcelRecords', $traits);
     }
 
-    /** @test */
+    #[Test]
     public function it_accepts_excel_file_types_in_form(): void
     {
         $action = FullImportAction::make()

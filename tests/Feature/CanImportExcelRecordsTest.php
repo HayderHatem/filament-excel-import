@@ -2,11 +2,14 @@
 
 namespace HayderHatem\FilamentExcelImport\Tests\Feature;
 
+use HayderHatem\FilamentExcelImport\Actions\Imports\FullImportAction;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PHPUnit\Framework\Attributes\Test;
 
 class CanImportExcelRecordsTest extends TestCase
 {
@@ -19,7 +22,37 @@ class CanImportExcelRecordsTest extends TestCase
         Storage::fake('local');
     }
 
-    /** @test */
+    private function createExcelFile(array $data, string $filename = 'test.xlsx'): UploadedFile
+    {
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Add headers
+        $headers = array_keys($data[0] ?? []);
+        foreach ($headers as $index => $header) {
+            $column = chr(65 + $index); // A, B, C, etc.
+            $sheet->setCellValue($column . '1', $header);
+        }
+
+        // Add data rows
+        foreach ($data as $rowIndex => $row) {
+            $rowNumber = $rowIndex + 2; // Start from row 2
+            $colIndex = 0;
+            foreach ($row as $value) {
+                $column = chr(65 + $colIndex); // A, B, C, etc.
+                $sheet->setCellValue($column . $rowNumber, $value);
+                $colIndex++;
+            }
+        }
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'test_excel_');
+        $writer = new Xlsx($spreadsheet);
+        $writer->save($tempFile);
+
+        return new UploadedFile($tempFile, $filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', null, true);
+    }
+
+    #[Test]
     public function it_can_detect_excel_file_extensions(): void
     {
         // Test file extension detection logic
@@ -35,7 +68,7 @@ class CanImportExcelRecordsTest extends TestCase
         }
     }
 
-    /** @test */
+    #[Test]
     public function it_can_create_and_read_excel_file(): void
     {
         // Create a test Excel file
@@ -86,7 +119,7 @@ class CanImportExcelRecordsTest extends TestCase
         unlink($tempFile);
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_excel_file_with_custom_header_row(): void
     {
         // Create a test Excel file with headers on row 3
@@ -130,7 +163,7 @@ class CanImportExcelRecordsTest extends TestCase
         unlink($tempFile);
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_excel_file_with_empty_cells(): void
     {
         // Create a test Excel file with empty cells
@@ -164,7 +197,7 @@ class CanImportExcelRecordsTest extends TestCase
         unlink($tempFile);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_process_large_excel_files(): void
     {
         // Create a test Excel file with many rows
@@ -204,7 +237,7 @@ class CanImportExcelRecordsTest extends TestCase
         unlink($tempFile);
     }
 
-    /** @test */
+    #[Test]
     public function it_handles_corrupted_files_gracefully(): void
     {
         // Create a fake corrupted file
@@ -227,7 +260,7 @@ class CanImportExcelRecordsTest extends TestCase
         unlink($tempFile);
     }
 
-    /** @test */
+    #[Test]
     public function it_validates_sheet_access(): void
     {
         // Create a test Excel file with one sheet

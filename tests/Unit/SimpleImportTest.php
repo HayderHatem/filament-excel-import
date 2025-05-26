@@ -7,12 +7,13 @@ use HayderHatem\FilamentExcelImport\Models\Import;
 use HayderHatem\FilamentExcelImport\Tests\Importers\TestUserImporter;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class SimpleImportTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @test */
+    #[Test]
     public function it_can_create_import_and_failed_import_row_models()
     {
         // Test Import model creation
@@ -48,7 +49,7 @@ class SimpleImportTest extends TestCase
         $this->assertEquals(1, $import->getFailedRowsCount());
     }
 
-    /** @test */
+    #[Test]
     public function it_can_handle_json_casting()
     {
         $import = Import::create([
@@ -77,7 +78,7 @@ class SimpleImportTest extends TestCase
         $this->assertIsArray($failedRow->validation_errors);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_handle_null_validation_errors()
     {
         $import = Import::create([
@@ -98,21 +99,21 @@ class SimpleImportTest extends TestCase
         $this->assertEquals('System error', $failedRow->error);
     }
 
-    /** @test */
+    #[Test]
     public function it_extends_filament_import_model()
     {
         $import = new Import();
         $this->assertInstanceOf(\Filament\Actions\Imports\Models\Import::class, $import);
     }
 
-    /** @test */
+    #[Test]
     public function import_model_has_correct_table_name()
     {
         $import = new Import();
         $this->assertEquals('imports', $import->getTable());
     }
 
-    /** @test */
+    #[Test]
     public function failed_import_row_model_has_correct_table_name()
     {
         $failedRow = new FailedImportRow();

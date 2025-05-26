@@ -7,12 +7,13 @@ use HayderHatem\FilamentExcelImport\Models\Import;
 use HayderHatem\FilamentExcelImport\Tests\Importers\TestUserImporter;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use PHPUnit\Framework\Attributes\Test;
 
 class FailedImportRowTest extends TestCase
 {
     use RefreshDatabase;
 
-    /** @test */
+    #[Test]
     public function it_can_create_a_failed_import_row()
     {
         $import = Import::create([
@@ -36,7 +37,7 @@ class FailedImportRowTest extends TestCase
         $this->assertEquals('Validation failed', $failedRow->error);
     }
 
-    /** @test */
+    #[Test]
     public function it_belongs_to_an_import()
     {
         $import = Import::create([
@@ -57,7 +58,7 @@ class FailedImportRowTest extends TestCase
         $this->assertEquals($import->id, $failedRow->import->id);
     }
 
-    /** @test */
+    #[Test]
     public function it_casts_data_and_validation_errors_to_arrays()
     {
         $import = Import::create([
@@ -78,7 +79,7 @@ class FailedImportRowTest extends TestCase
         $this->assertIsArray($failedRow->validation_errors);
     }
 
-    /** @test */
+    #[Test]
     public function it_can_handle_null_validation_errors()
     {
         $import = Import::create([
