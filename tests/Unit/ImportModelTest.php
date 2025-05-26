@@ -5,7 +5,6 @@ namespace HayderHatem\FilamentExcelImport\Tests\Unit;
 use HayderHatem\FilamentExcelImport\Models\FailedImportRow;
 use HayderHatem\FilamentExcelImport\Models\Import;
 use HayderHatem\FilamentExcelImport\Tests\Importers\TestUserImporter;
-use HayderHatem\FilamentExcelImport\Tests\Models\User;
 use HayderHatem\FilamentExcelImport\Tests\TestCase;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\Test;

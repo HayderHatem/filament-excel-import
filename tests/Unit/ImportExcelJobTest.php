@@ -166,10 +166,10 @@ class ImportExcelJobTest extends TestCase
         ];
 
         // Create a job with a mock batch that returns cancelled
-        $job = new class($import->id, base64_encode(serialize($rows)), $columnMap, []) extends ImportExcel {
+        $job = new class ($import->id, base64_encode(serialize($rows)), $columnMap, []) extends ImportExcel {
             public function batch()
             {
-                return new class() {
+                return new class () {
                     public function cancelled()
                     {
                         return true;
