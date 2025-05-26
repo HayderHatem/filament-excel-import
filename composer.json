@@ -26,17 +26,12 @@
         "phpstan/phpstan-phpunit": "^1.0"
     },
     "scripts": {
-        "test": "vendor/bin/phpunit",
-        "test-coverage": "vendor/bin/phpunit --coverage-html coverage",
+        "test": "vendor/bin/phpunit --no-coverage",
+        "test-coverage": "vendor/bin/phpunit --coverage-text --coverage-clover=coverage.clover",
         "test-runner": "php test-runner.php",
-        "cs-fix": "vendor/bin/php-cs-fixer fix",
         "cs-check": "vendor/bin/php-cs-fixer fix --dry-run --diff",
-        "phpstan": "vendor/bin/phpstan analyse",
-        "ci": [
-            "@cs-check",
-            "@phpstan",
-            "@test"
-        ]
+        "cs-fix": "vendor/bin/php-cs-fixer fix",
+        "phpstan": "vendor/bin/phpstan analyse --memory-limit=512M"
     },
     "extra": {
         "laravel": {

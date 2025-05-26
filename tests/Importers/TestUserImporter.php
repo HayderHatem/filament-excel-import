@@ -7,6 +7,8 @@ use Filament\Actions\Imports\Importer;
 use HayderHatem\FilamentExcelImport\Models\Import;
 use HayderHatem\FilamentExcelImport\Tests\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class TestUserImporter extends Importer
 {
@@ -39,6 +41,19 @@ class TestUserImporter extends Importer
 
     public function import(array $data, array $map, array $options = []): void
     {
+        // Validate the data before importing
+        $rules = [
+            'name' => ['required', 'string'],
+            'email' => ['required', 'email', 'unique:users,email'],
+            'password' => ['required', 'string', 'min:8'],
+        ];
+
+        $validator = Validator::make($data, $rules);
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
         $user = $this->resolveRecord();
         $user->name = $data['name'];
         $user->email = $data['email'];
