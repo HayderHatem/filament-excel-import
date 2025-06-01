@@ -58,6 +58,12 @@ trait CanImportExcelRecords
      */
     protected array $fileValidationRules = [];
 
+    /**
+     * Additional form components to include in the import form
+     * @var array<\Filament\Forms\Components\Component>
+     */
+    protected array $additionalFormComponents = [];
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -212,6 +218,8 @@ trait CanImportExcelRecords
                             ->send();
                     }
                 }),
+            // Add additional form components section
+            ...$this->getAdditionalFormComponents(),
             Fieldset::make(__('filament-actions::import.modal.form.columns.label'))
                 ->columns(1)
                 ->inlineLabel()
@@ -261,6 +269,9 @@ trait CanImportExcelRecords
             /** @var TemporaryUploadedFile $excelFile */
             $excelFile = $data['file'];
             $activeSheetIndex = $data['activeSheet'] ?? $action->getActiveSheet() ?? 0;
+
+            // Extract additional form data
+            $additionalFormData = $this->extractAdditionalFormData($data);
 
             try {
                 $spreadsheet = $this->getUploadedFileSpreadsheet($excelFile);
@@ -333,10 +344,11 @@ trait CanImportExcelRecords
                 // Store the import ID for later use
                 $importId = $import->id;
 
-                // Convert options to serializable format
+                // Convert options to serializable format and include additional form data
                 $options = array_merge(
                     $action->getOptions(),
                     Arr::except($data, ['file', 'columnMap']),
+                    ['additional_form_data' => $additionalFormData]
                 );
 
                 // Unset non-serializable relations to prevent issues
@@ -731,5 +743,53 @@ trait CanImportExcelRecords
         $this->fileValidationRules = $rules;
 
         return $this;
+    }
+
+    /**
+     * Get additional form components to include in the import form.
+     *
+     * @return array<\Filament\Forms\Components\Component>
+     */
+    protected function getAdditionalFormComponents(): array
+    {
+        if (empty($this->additionalFormComponents)) {
+            return [];
+        }
+
+        return [
+            Fieldset::make(__('filament-excel-import::import.modal.form.import_options.label'))
+                ->schema($this->additionalFormComponents)
+                ->columns(2)
+                ->collapsible()
+                ->collapsed(false)
+        ];
+    }
+
+    /**
+     * Add additional form components to the import form.
+     *
+     * @param array<\Filament\Forms\Components\Component> $components
+     */
+    public function additionalFormComponents(array $components): static
+    {
+        $this->additionalFormComponents = $components;
+        return $this;
+    }
+
+    /**
+     * Extract additional form data from submitted data.
+     */
+    protected function extractAdditionalFormData(array $data): array
+    {
+        if (empty($this->additionalFormComponents)) {
+            return [];
+        }
+
+        $additionalKeys = collect($this->additionalFormComponents)
+            ->map(fn($component) => $component->getName())
+            ->filter()
+            ->toArray();
+
+        return Arr::only($data, $additionalKeys);
     }
 }

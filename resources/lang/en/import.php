@@ -13,7 +13,10 @@ return [
             'file' => [
                 'label' => 'Upload XLSX / CSV File',
                 'placeholder' => 'Upload a XLSX / CSV file',
-            ]
+            ],
+            'import_options' => [
+                'label' => 'Import Options',
+            ],
         ]
     ],
     'errors' => [

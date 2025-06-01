@@ -22,4 +22,28 @@ class Import extends BaseImport
     {
         return $this->failedRows()->count();
     }
+
+    /**
+     * Get additional form data from options.
+     */
+    public function getAdditionalFormData(): array
+    {
+        return $this->options['additional_form_data'] ?? [];
+    }
+
+    /**
+     * Get specific additional form value.
+     */
+    public function getAdditionalFormValue(string $key, mixed $default = null): mixed
+    {
+        return data_get($this->getAdditionalFormData(), $key, $default);
+    }
+
+    /**
+     * Check if additional form data has a specific key.
+     */
+    public function hasAdditionalFormValue(string $key): bool
+    {
+        return data_get($this->getAdditionalFormData(), $key) !== null;
+    }
 }

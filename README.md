@@ -12,6 +12,7 @@ A powerful Excel import plugin for Filament that extends the standard ImportActi
 - 📥 **Failed Rows Export**: Download failed rows as CSV with clear error descriptions
 - 🚀 **Queue Support**: Handle large imports efficiently with Laravel's queue system
 - 🎨 **Seamless Integration**: Works with your existing Filament importers
+- 🔧 **Additional Form Components**: Add custom select dropdowns and form fields to enhance import context (v2.3.0)
 
 ## Why Use This Plugin?
 
@@ -180,6 +181,178 @@ protected function getHeaderActions(): array
         TableImportAction::make()
             ->importer(UserImporter::class),
     ];
+}
+```
+
+## Additional Form Components (v2.3.0)
+
+You can add custom form components (like select dropdowns) to the import form to provide context, defaults, or options that affect how the import is processed.
+
+### Basic Usage
+
+```php
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\TextInput;
+use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
+
+FullImportAction::make()
+    ->importer(UserImporter::class)
+    ->additionalFormComponents([
+        Select::make('default_status')
+            ->label('Default Status')
+            ->options([
+                'active' => 'Active',
+                'inactive' => 'Inactive',
+                'pending' => 'Pending'
+            ])
+            ->default('active')
+            ->required(),
+            
+        Select::make('import_mode')
+            ->label('Import Mode')
+            ->options([
+                'create_only' => 'Create New Records Only',
+                'update_only' => 'Update Existing Records Only',
+                'create_or_update' => 'Create or Update Records'
+            ])
+            ->default('create_only')
+            ->required(),
+            
+        TextInput::make('batch_name')
+            ->label('Batch Name')
+            ->placeholder('Enter batch identifier')
+            ->helperText('Optional identifier for this import batch'),
+    ]);
+```
+
+### Using Additional Form Data in Importer
+
+```php
+<?php
+
+namespace App\Filament\Imports;
+
+use Filament\Actions\Imports\Importer;
+use HayderHatem\FilamentExcelImport\Traits\CanAccessAdditionalFormData;
+
+class UserImporter extends Importer
+{
+    use CanAccessAdditionalFormData;
+
+    public function import(array $data, array $map, array $options = []): void
+    {
+        $record = $this->resolveRecord();
+        
+        // Use regular mapped data
+        $record->name = $data['name'];
+        $record->email = $data['email'];
+        
+        // Use additional form data for context and defaults
+        $defaultStatus = $this->getAdditionalFormValue('default_status', 'active');
+        $importMode = $this->getAdditionalFormValue('import_mode', 'create_only');
+        $batchName = $this->getAdditionalFormValue('batch_name');
+        
+        // Apply defaults for empty values
+        $record->status = $data['status'] ?? $defaultStatus;
+        
+        // Add batch information if provided
+        if ($batchName) {
+            $record->import_batch = $batchName;
+        }
+        
+        // Handle different import modes
+        switch ($importMode) {
+            case 'update_only':
+                $existing = static::getModel()::where('email', $record->email)->first();
+                if (!$existing) {
+                    throw new \Exception('Record not found for update-only mode');
+                }
+                $existing->update($record->toArray());
+                return;
+                
+            case 'create_or_update':
+                static::getModel()::updateOrCreate(
+                    ['email' => $record->email],
+                    $record->toArray()
+                );
+                return;
+                
+            default: // create_only
+                $record->save();
+        }
+    }
+}
+```
+
+### Dynamic Select Options
+
+```php
+use App\Models\Department;
+use App\Models\Role;
+
+FullImportAction::make()
+    ->importer(UserImporter::class)
+    ->additionalFormComponents([
+        Select::make('default_department_id')
+            ->label('Default Department')
+            ->options(
+                Department::active()
+                    ->pluck('name', 'id')
+                    ->toArray()
+            )
+            ->searchable()
+            ->placeholder('Select default department for empty values'),
+            
+        Select::make('default_role')
+            ->label('Default Role')
+            ->options(function () {
+                $user = auth()->user();
+                
+                // Show different roles based on user permissions
+                if ($user->hasRole('admin')) {
+                    return Role::all()->pluck('name', 'name')->toArray();
+                }
+                
+                return Role::where('level', '<=', $user->role_level)
+                    ->pluck('name', 'name')
+                    ->toArray();
+            })
+            ->searchable()
+            ->required(),
+            
+        Select::make('validation_level')
+            ->label('Validation Level')
+            ->options([
+                'strict' => 'Strict - Reject any invalid data',
+                'moderate' => 'Moderate - Skip invalid rows with warnings',
+                'lenient' => 'Lenient - Accept data with minor issues'
+            ])
+            ->default('moderate')
+            ->helperText('Choose how strictly to validate imported data'),
+    ]);
+```
+
+### Available Methods in Importer
+
+When using the `CanAccessAdditionalFormData` trait in your importer:
+
+```php
+// Get all additional form data
+$allData = $this->getAdditionalFormData();
+
+// Get specific value with default
+$status = $this->getAdditionalFormValue('default_status', 'active');
+
+// Check if value exists
+if ($this->hasAdditionalFormValue('batch_name')) {
+    $batchName = $this->getAdditionalFormValue('batch_name');
+    // Handle batch processing
+}
+
+// Use in validation logic
+$validationLevel = $this->getAdditionalFormValue('validation_level', 'moderate');
+if ($validationLevel === 'strict') {
+    // Apply strict validation rules
 }
 ```
 

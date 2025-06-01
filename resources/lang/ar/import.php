@@ -13,7 +13,10 @@ return [
             'file' => [
                 'label' => 'رفع ملف XLSX / CSV',
                 'placeholder' => 'رفع ملف XLSX / CSV',
-            ]
+            ],
+            'import_options' => [
+                'label' => 'خيارات الاستيراد',
+            ],
         ]
     ],
     'errors' => [

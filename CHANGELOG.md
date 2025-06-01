@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2025-06-01
+
+### Added
+- Additional form components support for import actions
+- `additionalFormComponents()` method to add custom form fields to import modal
+- `CanAccessAdditionalFormData` trait for importers to access additional form data
+- Import options fieldset in the import modal for better organization
+- Support for dynamic select dropdowns and other form components in import process
+- Methods to get, set, and check additional form values in importers
+
+### Changed
+- Import modal now supports collapsible "Import Options" section
+- Enhanced import job to pass additional form data to importers
+- Import model now provides access to additional form data
+
+### Fixed
+- Improved form data extraction and handling during import process
+
 ## [2.2.0] - 2025-06-01
 
 ### Added

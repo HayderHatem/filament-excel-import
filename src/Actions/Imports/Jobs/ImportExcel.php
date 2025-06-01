@@ -58,6 +58,11 @@ class ImportExcel implements ShouldQueue
             options: $this->options,
         );
 
+        // Set additional form data if the importer supports it
+        if (method_exists($importer, 'setAdditionalFormData') && isset($this->options['additional_form_data'])) {
+            $importer->setAdditionalFormData($this->options['additional_form_data']);
+        }
+
         $user = $import->user;
 
         if (! $user instanceof Authenticatable) {
