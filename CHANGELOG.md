@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.2] - 2025-06-01
+
+### Changed
+- Improved README documentation structure and organization
+- Fixed duplicate sections and inconsistent formatting
+- Consolidated feature list into single comprehensive section
+- Enhanced examples with better generic use cases
+- Removed redundant content while maintaining all important information
+- Better logical flow from installation to advanced features
+
 ## [2.3.1] - 2025-06-01
 
 ### Changed
