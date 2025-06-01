@@ -760,8 +760,6 @@ trait CanImportExcelRecords
             Fieldset::make(__('filament-excel-import::import.modal.form.import_options.label'))
                 ->schema($this->additionalFormComponents)
                 ->columns(2)
-                ->collapsible()
-                ->collapsed(false)
         ];
     }
 

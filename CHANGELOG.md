@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.1] - 2025-06-01
+
+### Changed
+- Removed collapsible behavior from Import Options fieldset for cleaner UI
+- Import Options section now always visible for better user experience
+
 ## [2.3.0] - 2025-06-01
 
 ### Added
