@@ -1,3 +1,20 @@
+# Filament Excel Import Plugin
+
+A powerful Excel import plugin for Filament that extends the standard ImportAction with Excel-specific features and enhanced validation handling.
+
+## Features
+
+- 📊 **Excel File Support**: Import XLSX, XLS, and CSV files with native PhpSpreadsheet integration
+- 🎯 **User-Friendly Error Messages**: SQL errors are automatically converted to plain, understandable messages (v2.2.0)
+- 🌍 **Translatable Error Messages**: Full support for multi-language error messages (v2.2.0)
+- 📑 **Multi-Sheet Support**: Import from any sheet in your Excel file with dynamic header detection
+- ✅ **Automatic Validation**: Captures and displays validation errors in a user-friendly format
+- 📥 **Failed Rows Export**: Download failed rows as CSV with clear error descriptions
+- 🚀 **Queue Support**: Handle large imports efficiently with Laravel's queue system
+- 🎨 **Seamless Integration**: Works with your existing Filament importers
+
+## Why Use This Plugin?
+
 # Filament Excel Import
 
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/hayderhatem/filament-excel-import.svg?style=flat-square)](https://packagist.org/packages/hayderhatem/filament-excel-import)

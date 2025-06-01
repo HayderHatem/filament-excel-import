@@ -14,6 +14,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Database\QueryException;
 use Throwable;
 
 class ImportExcel implements ShouldQueue
@@ -103,8 +104,8 @@ class ImportExcel implements ShouldQueue
                             })
                             ->implode('; ');
                     } else {
-                        // For non-validation errors, use the exception message
-                        $validationError = $exception->getMessage();
+                        // For non-validation errors, parse them to user-friendly messages
+                        $validationError = $this->parseErrorMessage($exception);
                     }
 
                     $import->failedRows()->create([
@@ -151,5 +152,65 @@ class ImportExcel implements ShouldQueue
         } catch (Throwable $e) {
             Log::error('Failed to send import notification: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Parse error messages to user-friendly format
+     */
+    protected function parseErrorMessage(Throwable $exception): string
+    {
+        // Handle database query exceptions
+        if ($exception instanceof QueryException) {
+            $message = $exception->getMessage();
+
+            // Parse "not null violation" errors
+            if (preg_match('/null value in column "([^"]+)".*violates not-null constraint/i', $message, $matches)) {
+                $field = $matches[1];
+                $fieldName = ucfirst(str_replace('_', ' ', $field));
+                return __('filament-excel-import::import.errors.field_required', ['field' => $fieldName]);
+            }
+
+            // Parse unique constraint violations
+            if (preg_match('/duplicate key value violates unique constraint.*\(([^)]+)\)/i', $message, $matches)) {
+                $field = $matches[1];
+                $fieldName = ucfirst(str_replace('_', ' ', $field));
+                return __('filament-excel-import::import.errors.field_exists', ['field' => $fieldName]);
+            }
+
+            // Parse foreign key constraint violations
+            if (preg_match('/violates foreign key constraint.*on table "([^"]+)"/i', $message, $matches)) {
+                $table = $matches[1];
+                $tableName = str_replace('_', ' ', $table);
+                return __('filament-excel-import::import.errors.invalid_reference', ['table' => $tableName]);
+            }
+
+            // Parse check constraint violations
+            if (preg_match('/violates check constraint "([^"]+)"/i', $message, $matches)) {
+                $constraint = $matches[1];
+                $constraintName = str_replace('_', ' ', $constraint);
+                return __('filament-excel-import::import.errors.check_constraint_failed', ['constraint' => $constraintName]);
+            }
+
+            // For other SQL errors, try to extract just the main error message
+            if (preg_match('/ERROR:\s*([^(]+)/i', $message, $matches)) {
+                return trim($matches[1]);
+            }
+        }
+
+        // For other exceptions, return a simplified message
+        $message = $exception->getMessage();
+
+        // Remove SQL statements from the message
+        $message = preg_replace('/\(SQL:.*\)$/s', '', $message);
+
+        // Clean up the message
+        $message = trim($message);
+
+        // If message is still too technical, provide a generic error
+        if (strlen($message) > 200 || stripos($message, 'SQLSTATE') !== false) {
+            return __('filament-excel-import::import.errors.generic_validation');
+        }
+
+        return $message;
     }
 }
