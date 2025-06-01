@@ -5,54 +5,41 @@
 [![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/hayderhatem/filament-excel-import/tests.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/hayderhatem/filament-excel-import/actions?query=workflow%3Atests+branch%3Amain)
 [![Total Downloads](https://img.shields.io/packagist/dt/hayderhatem/filament-excel-import.svg?style=flat-square)](https://packagist.org/packages/hayderhatem/filament-excel-import)
 
-A powerful and flexible Excel import package for Filament that extends the native import functionality with enhanced features, better error handling, and comprehensive validation.
+A Laravel package that extends Filament's ImportAction to support Excel file imports with automatic validation error capture.
 
 ## Features
 
-- 🚀 **Enhanced Import Action**: Extends Filament's native ImportAction with Excel-specific features
-- 📊 **Multi-Sheet Support**: Import from specific sheets in Excel workbooks
-- 🔍 **Advanced Validation**: Comprehensive validation with detailed error reporting
-- 📈 **Progress Tracking**: Real-time import progress with detailed statistics
-- 🛡️ **Error Handling**: Robust error handling with failed row tracking
-- 🎯 **Flexible Configuration**: Configurable chunk sizes, header rows, and validation rules
-- 📱 **Notification System**: Built-in notifications for import completion and errors
-- 🧪 **Fully Tested**: Comprehensive test suite with 44 tests covering all functionality
+- **Seamless Integration**: Works automatically with Filament's ImportAction
+- **Excel Support**: Import from Excel files (.xlsx, .xls) in addition to CSV
+- **Automatic Validation**: Captures validation errors from ImportColumn rules automatically
+- **Failed Rows Tracking**: Automatically tracks failed rows with detailed validation error messages
+- **Standard Compatibility**: Fully compatible with Filament's standard import structure
 
 ## Installation
 
-You can install the package via Composer:
+Install the package via Composer:
 
 ```bash
 composer require hayderhatem/filament-excel-import
 ```
 
-Publish and run the migrations:
+The package will automatically register itself and run migrations.
 
-```bash
-php artisan vendor:publish --tag="filament-excel-import-migrations"
-php artisan migrate
-```
+## Basic Usage
 
-Optionally, you can publish the config file:
+### 1. Create an Importer
 
-```bash
-php artisan vendor:publish --tag="filament-excel-import-config"
-```
-
-## Usage
-
-### Basic Usage
-
-1. **Create an Importer** (extends Filament's Importer):
+Create a standard Filament Importer with ImportColumn rules:
 
 ```php
 <?php
 
 namespace App\Filament\Imports;
 
+use App\Models\User;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
-use App\Models\User;
+use Illuminate\Support\Facades\Hash;
 
 class UserImporter extends Importer
 {
@@ -77,10 +64,14 @@ class UserImporter extends Importer
     {
         return new User();
     }
+
+    // No manual validation needed - the package captures validation errors automatically!
 }
 ```
 
-2. **Use the Enhanced Import Action**:
+### 2. Use the Excel Import Action
+
+Replace Filament's standard ImportAction with the Excel version:
 
 ```php
 <?php
@@ -88,27 +79,59 @@ class UserImporter extends Importer
 namespace App\Filament\Resources\UserResource\Pages;
 
 use App\Filament\Imports\UserImporter;
-use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
+use App\Filament\Resources\UserResource;
 use Filament\Resources\Pages\ListRecords;
+use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
 
 class ListUsers extends ListRecords
 {
+    protected static string $resource = UserResource::class;
+
     protected function getHeaderActions(): array
     {
         return [
             FullImportAction::make()
-                ->importer(UserImporter::class)
-                ->chunkSize(100)
-                ->headerRow(1)
-                ->maxRows(1000),
+                ->importer(UserImporter::class),
         ];
     }
 }
 ```
 
-### Advanced Configuration
+### 3. That's it!
 
-#### Multi-Sheet Excel Files
+The package automatically:
+- ✅ Handles Excel file uploads
+- ✅ Captures validation errors from your ImportColumn rules
+- ✅ Tracks failed rows with detailed error messages
+- ✅ Provides download of failed rows CSV
+- ✅ Works with existing Filament notifications
+
+## How Validation Works
+
+The package automatically captures validation errors from:
+
+1. **ImportColumn Rules**: Any validation rules defined on ImportColumn objects
+2. **Model Validation**: Laravel model validation during save
+3. **Database Constraints**: Unique constraints, foreign key violations, etc.
+
+**No manual validation needed!** Just define your rules in ImportColumn and the package handles the rest.
+
+### Example with Validation Errors
+
+```php
+ImportColumn::make('email')
+    ->requiredMapping()
+    ->rules(['required', 'email', 'unique:users,email']),
+```
+
+If validation fails, the error will be automatically captured as:
+- `"email: The email field is required"`
+- `"email: The email must be a valid email address"`
+- `"email: The email has already been taken"`
+
+## Advanced Usage
+
+### Custom Options
 
 ```php
 FullImportAction::make()
@@ -118,7 +141,7 @@ FullImportAction::make()
     ->chunkSize(50)  // Process 50 rows at a time
 ```
 
-#### Custom Validation Rules
+### Custom File Validation
 
 ```php
 FullImportAction::make()
@@ -129,127 +152,62 @@ FullImportAction::make()
     ])
 ```
 
-#### Using the Trait in Custom Actions
+### Using in Table Actions
 
 ```php
-<?php
+use HayderHatem\FilamentExcelImport\Actions\TableImportAction;
 
-namespace App\Filament\Actions;
-
-use Filament\Actions\ImportAction;
-use HayderHatem\FilamentExcelImport\Actions\Concerns\CanImportExcelRecords;
-
-class CustomImportAction extends ImportAction
+protected function getHeaderActions(): array
 {
-    use CanImportExcelRecords;
-
-    protected function setUp(): void
-    {
-        parent::setUp();
-        
-        $this->chunkSize(200)
-             ->maxRows(5000)
-             ->options(['update_existing' => true]);
-    }
+    return [
+        TableImportAction::make()
+            ->importer(UserImporter::class),
+    ];
 }
 ```
 
-### Error Handling and Failed Rows
+## Error Handling
 
-The package automatically tracks failed rows with detailed error information:
+### Automatic Failed Rows Tracking
+
+The package automatically:
+- Records failed rows with validation errors
+- Provides downloadable CSV of failed rows
+- Shows error counts in notifications
+- Maintains data integrity
+
+### Accessing Failed Rows Programmatically
 
 ```php
-// Access failed rows after import
+use HayderHatem\FilamentExcelImport\Models\Import;
+
 $import = Import::find($importId);
 $failedRows = $import->failedRows;
 
 foreach ($failedRows as $failedRow) {
     echo "Row data: " . json_encode($failedRow->data);
-    echo "Validation errors: " . json_encode($failedRow->validation_errors);
+    echo "Validation error: " . $failedRow->validation_error;
 }
 ```
 
-### Notifications
+## Database Structure
 
-The package provides built-in notifications for import completion:
+The package creates these tables (compatible with standard Filament):
 
-```php
-// Customize notification messages in your Importer
-public static function getCompletedNotificationBody(\Filament\Actions\Imports\Models\Import $import): string
-{
-    $customImport = Import::find($import->id);
-    
-    $body = 'Import completed successfully! ' .
-        number_format($customImport->imported_rows) . ' records imported.';
-    
-    if ($failedRowsCount = $customImport->getFailedRowsCount()) {
-        $body .= ' ' . number_format($failedRowsCount) . ' rows failed.';
-    }
-    
-    return $body;
-}
-```
+- `imports`: Tracks import sessions
+- `failed_import_rows`: Stores failed rows with validation errors
 
-## Configuration
+The structure is fully compatible with Filament's standard import tables.
 
-The package supports various configuration options:
+## Requirements
 
-| Option | Description | Default |
-|--------|-------------|---------|
-| `chunkSize` | Number of rows to process at once | `100` |
-| `headerRow` | Row number containing headers | `1` |
-| `activeSheet` | Sheet index to import from | `0` |
-| `maxRows` | Maximum rows to import | `null` |
-| `fileValidationRules` | File validation rules | `[]` |
+- Laravel 10.0+
+- Filament 3.0+
+- PHP 8.1+
 
-## Testing
+## Migration Compatibility
 
-The package includes a comprehensive test suite:
-
-```bash
-composer test
-```
-
-Run tests with coverage:
-
-```bash
-composer test-coverage
-```
-
-Check code style:
-
-```bash
-composer cs-check
-```
-
-Fix code style issues:
-
-```bash
-composer cs-fix
-```
-
-Run static analysis:
-
-```bash
-composer phpstan
-```
-
-## Changelog
-
-Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed recently.
-
-## Contributing
-
-Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
-
-## Security Vulnerabilities
-
-Please review [our security policy](../../security/policy) on how to report security vulnerabilities.
-
-## Credits
-
-- [Hayder Hatem](https://github.com/hayderhatem)
-- [All Contributors](../../contributors)
+The package automatically handles migrations and is fully compatible with standard Filament import migrations. If you already have Filament's import tables, the package will use them seamlessly.
 
 ## License
 

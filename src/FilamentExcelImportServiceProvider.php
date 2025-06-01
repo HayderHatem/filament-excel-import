@@ -19,9 +19,13 @@ class FilamentExcelImportServiceProvider extends ServiceProvider
             File::makeDirectory(__DIR__ . '/../database/migrations', 0o755, true);
         }
 
-        // Load migrations with timestamps
-        $this->ensureMigrationsHaveTimestamps();
+        // Load migrations automatically
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+
+        // Publish migrations if needed
+        $this->publishes([
+            __DIR__ . '/../database/migrations' => database_path('migrations'),
+        ], 'filament-excel-import-migrations');
 
         // Publishing resources
         if ($this->app->runningInConsole()) {
@@ -30,10 +34,10 @@ class FilamentExcelImportServiceProvider extends ServiceProvider
                 __DIR__ . '/../resources/lang' => resource_path('lang/vendor/filament-excel-import'),
             ], 'filament-excel-import-translations');
 
-            // Publish migrations
+            // Publish config if needed
             $this->publishes([
-                __DIR__ . '/../database/migrations' => database_path('migrations'),
-            ], 'filament-excel-import-migrations');
+                __DIR__ . '/../config/filament-excel-import.php' => config_path('filament-excel-import.php'),
+            ], 'filament-excel-import-config');
         }
     }
 

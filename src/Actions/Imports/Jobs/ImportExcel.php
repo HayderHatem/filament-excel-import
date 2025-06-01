@@ -13,6 +13,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Throwable;
 
 class ImportExcel implements ShouldQueue
@@ -35,8 +36,7 @@ class ImportExcel implements ShouldQueue
         public string $rows,
         public array $columnMap,
         public array $options = [],
-    ) {
-    }
+    ) {}
 
     public function handle(): void
     {
@@ -81,7 +81,7 @@ class ImportExcel implements ShouldQueue
 
         foreach ($processedRows as $processedRow) {
             try {
-                DB::transaction(fn () => $importer->import(
+                DB::transaction(fn() => $importer->import(
                     $processedRow,
                     $this->columnMap,
                     $this->options,
@@ -92,14 +92,28 @@ class ImportExcel implements ShouldQueue
                 $failedRowsCount++;
 
                 try {
+                    $validationError = null;
+
+                    // Extract validation errors if it's a ValidationException
+                    if ($exception instanceof ValidationException) {
+                        $errors = $exception->errors();
+                        $validationError = collect($errors)
+                            ->map(function ($fieldErrors, $field) {
+                                return $field . ': ' . implode(', ', $fieldErrors);
+                            })
+                            ->implode('; ');
+                    } else {
+                        // For non-validation errors, use the exception message
+                        $validationError = $exception->getMessage();
+                    }
+
                     $import->failedRows()->create([
                         'data' => array_map(
-                            fn ($value) => is_null($value) ? null : (string) $value,
+                            fn($value) => is_null($value) ? null : (string) $value,
                             $processedRow,
                         ),
-                        'validation_errors' => [],
+                        'validation_error' => $validationError,
                         'import_id' => $import->getKey(),
-                        'error' => $exception->getMessage(),
                     ]);
                 } catch (Throwable $e) {
                     // Log the error but continue processing
