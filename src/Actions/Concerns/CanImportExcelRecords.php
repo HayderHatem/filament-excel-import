@@ -481,7 +481,10 @@ trait CanImportExcelRecords
                     // Add headers
                     $columnIndex = 1;
                     foreach ($columns as $column) {
-                        $worksheet->setCellValueByColumnAndRow($columnIndex, 1, $column->getExampleHeader());
+                        $worksheet->setCellValue(
+                            \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($columnIndex) . '1',
+                            $column->getExampleHeader()
+                        );
                         $columnIndex++;
                     }
                     // Add example data
@@ -497,9 +500,8 @@ trait CanImportExcelRecords
                     for ($rowIndex = 0; $rowIndex < $exampleRowsCount; $rowIndex++) {
                         $columnIndex = 1;
                         foreach ($columnExamples as $exampleData) {
-                            $worksheet->setCellValueByColumnAndRow(
-                                $columnIndex,
-                                $rowIndex + 2,
+                            $worksheet->setCellValue(
+                                \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($columnIndex) . ($rowIndex + 2),
                                 $exampleData[$rowIndex] ?? ''
                             );
                             $columnIndex++;
@@ -534,7 +536,28 @@ trait CanImportExcelRecords
 
         try {
             $reader = IOFactory::createReaderForFile($path);
+
+            // Apply memory optimizations for large files
             $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+
+            // If file size is large, apply additional optimizations
+            $fileSize = filesize($path);
+            $maxFileSize = 10 * 1024 * 1024; // 10MB threshold
+
+            if ($fileSize > $maxFileSize) {
+                // For very large files, try to use minimal memory
+                if (method_exists($reader, 'setReadFilter')) {
+                    // Set a read filter to limit the number of rows initially read for structure detection
+                    $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                        public function readCell($columnAddress, $row, $worksheetName = ''): bool
+                        {
+                            // Only read first 1000 rows for structure detection to save memory
+                            return $row <= 1000;
+                        }
+                    });
+                }
+            }
 
             return $reader->load($path);
         } catch (ReaderException $e) {
@@ -543,6 +566,23 @@ trait CanImportExcelRecords
                 ->body($e->getMessage())
                 ->danger()
                 ->send();
+
+            return null;
+        } catch (\Exception $e) {
+            // Handle memory limit errors specifically
+            if (strpos($e->getMessage(), 'memory') !== false || strpos($e->getMessage(), 'Memory') !== false) {
+                Notification::make()
+                    ->title(__('File too large'))
+                    ->body(__('The uploaded file is too large to process. Please try uploading a smaller file or contact your administrator to increase the memory limit.'))
+                    ->danger()
+                    ->send();
+            } else {
+                Notification::make()
+                    ->title(__('Error reading Excel file'))
+                    ->body($e->getMessage())
+                    ->danger()
+                    ->send();
+            }
 
             return null;
         }
