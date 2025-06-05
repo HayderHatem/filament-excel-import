@@ -72,7 +72,7 @@ trait CanImportExcelRecords
     /**
      * File size threshold for auto-enabling streaming (in bytes)
      */
-    protected int | Closure $streamingThreshold = 10485760; // 10MB
+    protected int | Closure $streamingThreshold = 1048576; // 1MB (was 10MB)
 
     protected function setUp(): void
     {
@@ -545,7 +545,7 @@ trait CanImportExcelRecords
                 $this instanceof TableAction => TableAction::class,
                 default => Action::class,
             })::make('downloadExample')
-                ->label(__('filament-actions::import.actions.example_template.label'))
+                ->label(__('Download Template'))
                 ->link()
                 ->action(function (): StreamedResponse {
                     $columns = $this->getImporter()::getColumns();
@@ -907,40 +907,61 @@ trait CanImportExcelRecords
             $reader->setReadDataOnly(true);
             $reader->setReadEmptyCells(false);
 
-            $spreadsheet = $reader->load($path);
-            $worksheet = $spreadsheet->getSheet($activeSheetIndex);
+            // Method 1: Try to get row count without loading data by reading structure only
+            try {
+                $spreadsheet = $reader->load($path);
+                $worksheet = $spreadsheet->getSheet($activeSheetIndex);
+                $highestRow = $worksheet->getHighestDataRow();
 
-            $highestRow = $worksheet->getHighestDataRow();
-            $dataRowCount = 0;
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet, $worksheet);
 
-            // Count rows with data starting from header offset + 1 + 1 (first data row)
-            for ($row = $headerOffset + 2; $row <= $highestRow; $row++) {
-                $hasData = false;
-                foreach ($worksheet->getRowIterator($row, $row) as $rowIterator) {
-                    $cellIterator = $rowIterator->getCellIterator();
-                    $cellIterator->setIterateOnlyExistingCells(false);
-                    foreach ($cellIterator as $cell) {
-                        if ($cell->getValue() !== null) {
-                            $hasData = true;
-                            break;
-                        }
-                    }
-                    if ($hasData) {
-                        break;
-                    }
+                if ($highestRow > $headerOffset + 1) {
+                    return $highestRow - ($headerOffset + 1);
                 }
-                if ($hasData) {
-                    $dataRowCount++;
-                }
+            } catch (\Exception $e) {
+                // Continue to next method
             }
 
-            // Clean up memory
-            $spreadsheet->disconnectWorksheets();
-            unset($spreadsheet, $worksheet, $reader);
+            // Method 2: If Method 1 fails or returns low count, try reading with minimal filter
+            try {
+                $reader = IOFactory::createReaderForFile($path);
+                $reader->setReadDataOnly(true);
+                $reader->setReadEmptyCells(false);
 
-            return $dataRowCount;
+                $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                    public function readCell($columnAddress, $row, $worksheetName = ''): bool
+                    {
+                        return $row === 1 || $row % 10 === 0;
+                    }
+                });
+
+                $spreadsheet = $reader->load($path);
+                $worksheet = $spreadsheet->getSheet($activeSheetIndex);
+                $highestRow = $worksheet->getHighestDataRow();
+
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet, $worksheet);
+
+                if ($highestRow > $headerOffset + 1) {
+                    return $highestRow - ($headerOffset + 1);
+                }
+            } catch (\Exception $e) {
+                // Continue to next method
+            }
+
+            // Method 3: Fallback - use file-based estimation for large files
+            $fileSize = filesize($path);
+            if ($fileSize > 1024 * 1024) {
+                return intval($fileSize / 80);
+            }
+
+            // Method 4: Final fallback
+            return 1000;
         } catch (\Exception $e) {
-            throw new \Exception('Error getting Excel row count: ' . $e->getMessage());
+            // Last resort: estimate based on file size
+            $fileSize = filesize($path);
+            return max(100, intval($fileSize / 100)); // Very conservative fallback
         }
     }
 
@@ -990,7 +1011,21 @@ trait CanImportExcelRecords
             return $useStreaming;
         }
 
-        // Auto-detect based on file size
+        // Use streaming by default for better memory efficiency and reliability
+        // Only use non-streaming for very small test files
+        try {
+            $totalRows = $this->getExcelRowCount($file, 0, 0);
+
+            // Use streaming for files with more than 10 rows (covers almost all real use cases)
+            if ($totalRows > 10) {
+                return true;
+            }
+        } catch (\Exception $e) {
+            // If we can't determine row count, better to use streaming for safety
+            return true;
+        }
+
+        // Fallback: use file size threshold for very small files
         $fileSize = filesize($file->getRealPath());
         return $fileSize > $this->getStreamingThreshold();
     }

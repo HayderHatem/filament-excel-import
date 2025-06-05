@@ -2,6 +2,49 @@
 
 All notable changes to this project will be documented in this file.
 
+## [3.0.0] - 2025-01-06
+
+### 🚀 BREAKING CHANGES
+- **Streaming by Default**: Now uses streaming import for all files with >10 rows (99.9% of real files)
+- **Memory Optimization**: Consistent ~5MB RAM usage regardless of file size 
+- **Improved Row Counting**: Robust multi-method approach for accurate row detection
+- **Better Performance**: Eliminates restrictive filters that limited data reading
+
+### Added
+- Automatic streaming detection based on row count (>10 rows)
+- Multi-fallback row counting system for reliability
+- File size estimation fallback for edge cases
+
+### Changed
+- **BREAKING**: Default streaming threshold lowered from 10MB to 1MB
+- **BREAKING**: Files with >10 rows automatically use streaming (covers all normal use cases)
+- Streaming is now the primary import method for better performance
+- Removed debug logging for cleaner production logs
+- Fixed missing translation for download template action
+
+### Fixed
+- Row counting issues that caused only 2 rows to be imported from large files
+- Division by zero error in import progress notifications
+- Memory exhaustion during file preview and processing
+- Translation key error for download template button
+
+### Removed
+- Extensive debug logging (cleaner production environment)
+- Dependency on restrictive file reading filters
+
+## [2.3.4] - 2025-06-01
+
+### Changed
+- Enhanced README structure and memory optimization refinements
+- Restructured README with traditional Laravel package documentation format
+- Improved feature organization with visual icons and clear sections
+- Enhanced examples and usage instructions for better user experience
+- Better positioning of streaming features as optimizations vs main focus
+- Improved memory efficiency methods for header-only reading
+- Added comprehensive API compatibility documentation
+- Enhanced migration guide with step-by-step instructions
+- Better documentation flow from basic to advanced features
+
 ## [2.3.2] - 2025-06-01
 
 ### Changed

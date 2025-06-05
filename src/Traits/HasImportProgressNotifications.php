@@ -14,6 +14,11 @@ trait HasImportProgressNotifications
             return;
         }
 
+        // Prevent division by zero when total_rows is 0
+        if (! $import->total_rows || $import->total_rows <= 0) {
+            return;
+        }
+
         $progress = ($import->processed_rows / $import->total_rows) * 100;
 
         if ($progress < 100) {
@@ -27,15 +32,15 @@ trait HasImportProgressNotifications
             ->body($import->importer::getCompletedNotificationBody($import))
             ->when(
                 ! $failedRowsCount,
-                fn (Notification $notification) => $notification->success(),
+                fn(Notification $notification) => $notification->success(),
             )
             ->when(
                 $failedRowsCount && ($failedRowsCount < $import->total_rows),
-                fn (Notification $notification) => $notification->warning(),
+                fn(Notification $notification) => $notification->warning(),
             )
             ->when(
                 $failedRowsCount === $import->total_rows,
-                fn (Notification $notification) => $notification->danger(),
+                fn(Notification $notification) => $notification->danger(),
             )
             ->sendToDatabase($user);
     }
