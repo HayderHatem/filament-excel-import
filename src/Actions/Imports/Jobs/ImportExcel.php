@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Database\QueryException;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Reader\Exception as ReaderException;
+use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use Throwable;
 
 class ImportExcel implements ShouldQueue
@@ -28,14 +31,18 @@ class ImportExcel implements ShouldQueue
 
     /**
      * @param  int  $importId The ID of the Import model
-     * @param  string  $rows Base64-encoded serialized array of rows
+     * @param  string|null  $rows Base64-encoded serialized array of rows (for regular import)
+     * @param  int|null  $startRow Starting row number to process (for streaming import)
+     * @param  int|null  $endRow Ending row number to process (for streaming import)
      * @param  array<string, string>  $columnMap
      * @param  array<string, mixed>  $options
      */
     public function __construct(
         public int $importId,
-        public string $rows,
-        public array $columnMap,
+        public ?string $rows = null,
+        public ?int $startRow = null,
+        public ?int $endRow = null,
+        public array $columnMap = [],
         public array $options = [],
     ) {}
 
@@ -47,8 +54,6 @@ class ImportExcel implements ShouldQueue
 
         // Retrieve the import model by ID
         $import = Import::findOrFail($this->importId);
-
-        $rows = unserialize(base64_decode($this->rows));
 
         $importedRowsCount = 0;
         $failedRowsCount = 0;
@@ -69,72 +74,97 @@ class ImportExcel implements ShouldQueue
             return;
         }
 
-        $processedRows = [];
+        // Determine if this is a streaming import or regular import
+        $isStreamingImport = $this->startRow !== null && $this->endRow !== null;
 
-        foreach ($rows as $row) {
-            $processedRow = [];
-
-            foreach ($this->columnMap as $importerColumn => $excelColumn) {
-                if (blank($excelColumn)) {
-                    continue;
-                }
-
-                $processedRow[$importerColumn] = $row[$excelColumn] ?? null;
+        try {
+            if ($isStreamingImport) {
+                // Streaming import: read rows from file
+                $rows = $this->readExcelRowsFromFile($import->file_path, $this->startRow, $this->endRow);
+            } else {
+                // Regular import: deserialize rows
+                $rows = unserialize(base64_decode($this->rows));
             }
 
-            $processedRows[] = $processedRow;
-        }
+            $processedRows = [];
 
-        foreach ($processedRows as $processedRow) {
-            try {
-                DB::transaction(fn() => $importer->import(
-                    $processedRow,
-                    $this->columnMap,
-                    $this->options,
-                ));
+            foreach ($rows as $row) {
+                $processedRow = [];
 
-                $importedRowsCount++;
-            } catch (Throwable $exception) {
-                $failedRowsCount++;
-
-                try {
-                    $validationError = null;
-
-                    // Extract validation errors if it's a ValidationException
-                    if ($exception instanceof ValidationException) {
-                        $errors = $exception->errors();
-                        $validationError = collect($errors)
-                            ->map(function ($fieldErrors, $field) {
-                                return $field . ': ' . implode(', ', $fieldErrors);
-                            })
-                            ->implode('; ');
-                    } else {
-                        // For non-validation errors, parse them to user-friendly messages
-                        $validationError = $this->parseErrorMessage($exception);
+                foreach ($this->columnMap as $importerColumn => $excelColumn) {
+                    if (blank($excelColumn)) {
+                        continue;
                     }
 
-                    $import->failedRows()->create([
-                        'data' => array_map(
-                            fn($value) => is_null($value) ? null : (string) $value,
-                            $processedRow,
-                        ),
-                        'validation_error' => $validationError,
-                        'import_id' => $import->getKey(),
-                    ]);
-                } catch (Throwable $e) {
-                    // Log the error but continue processing
-                    Log::error('Failed to record import error: ' . $e->getMessage(), [
-                        'import_id' => $import->getKey(),
-                        'row_data' => $processedRow,
-                        'original_error' => $exception->getMessage(),
-                    ]);
+                    $processedRow[$importerColumn] = $row[$excelColumn] ?? null;
+                }
+
+                $processedRows[] = $processedRow;
+            }
+
+            foreach ($processedRows as $processedRow) {
+                try {
+                    DB::transaction(fn() => $importer->import(
+                        $processedRow,
+                        $this->columnMap,
+                        $this->options,
+                    ));
+
+                    $importedRowsCount++;
+                } catch (Throwable $exception) {
+                    $failedRowsCount++;
+
+                    try {
+                        $validationError = null;
+
+                        // Extract validation errors if it's a ValidationException
+                        if ($exception instanceof ValidationException) {
+                            $errors = $exception->errors();
+                            $validationError = collect($errors)
+                                ->map(function ($fieldErrors, $field) {
+                                    return $field . ': ' . implode(', ', $fieldErrors);
+                                })
+                                ->implode('; ');
+                        } else {
+                            // For non-validation errors, parse them to user-friendly messages
+                            $validationError = $this->parseErrorMessage($exception);
+                        }
+
+                        $import->failedRows()->create([
+                            'data' => array_map(
+                                fn($value) => is_null($value) ? null : (string) $value,
+                                $processedRow,
+                            ),
+                            'validation_error' => $validationError,
+                            'import_id' => $import->getKey(),
+                        ]);
+                    } catch (Throwable $e) {
+                        // Log the error but continue processing
+                        Log::error('Failed to record import error: ' . $e->getMessage(), [
+                            'import_id' => $import->getKey(),
+                            'row_data' => $processedRow,
+                            'original_error' => $exception->getMessage(),
+                        ]);
+                    }
                 }
             }
+        } catch (Throwable $e) {
+            if ($isStreamingImport) {
+                Log::error('Failed to read Excel file chunk: ' . $e->getMessage(), [
+                    'import_id' => $import->getKey(),
+                    'start_row' => $this->startRow,
+                    'end_row' => $this->endRow,
+                    'file_path' => $import->file_path,
+                ]);
+            }
+            throw $e;
         }
+
+        $processedRowsCount = count($processedRows ?? []);
 
         // Try to update counters, handling missing columns gracefully
         try {
-            $import->increment('processed_rows', count($processedRows));
+            $import->increment('processed_rows', $processedRowsCount);
         } catch (Throwable $e) {
             Log::error('Failed to update processed_rows: ' . $e->getMessage());
         }
@@ -156,6 +186,102 @@ class ImportExcel implements ShouldQueue
             $this->notifyImportProgress($import, $user);
         } catch (Throwable $e) {
             Log::error('Failed to send import notification: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Read specific rows from Excel file using streaming approach
+     */
+    protected function readExcelRowsFromFile(string $filePath, int $startRow, int $endRow): array
+    {
+        if (!file_exists($filePath)) {
+            throw new \Exception("Import file not found: {$filePath}");
+        }
+
+        try {
+            $reader = IOFactory::createReaderForFile($filePath);
+
+            // Apply memory optimizations
+            $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+
+            // Set a read filter to only read the rows we need
+            $reader->setReadFilter(new class($startRow, $endRow, $this->options) implements IReadFilter {
+                public function __construct(
+                    private int $startRow,
+                    private int $endRow,
+                    private array $options
+                ) {}
+
+                public function readCell($columnAddress, $row, $worksheetName = ''): bool
+                {
+                    $headerOffset = $this->options['headerOffset'] ?? 0;
+                    $headerRowNumber = $headerOffset + 1;
+
+                    // Read header row and our target rows
+                    return $row === $headerRowNumber || ($row >= $this->startRow && $row <= $this->endRow);
+                }
+            });
+
+            $spreadsheet = $reader->load($filePath);
+
+            // Get the active sheet (assuming sheet index is stored in options)
+            $activeSheetIndex = $this->options['activeSheet'] ?? 0;
+            $worksheet = $spreadsheet->getSheet($activeSheetIndex);
+
+            // Get headers from row 1
+            $headers = [];
+            $headerOffset = $this->options['headerOffset'] ?? 0;
+            $headerRowNumber = $headerOffset + 1;
+            foreach ($worksheet->getRowIterator($headerRowNumber, $headerRowNumber) as $row) {
+                $cellIterator = $row->getCellIterator();
+                $cellIterator->setIterateOnlyExistingCells(false);
+                foreach ($cellIterator as $cell) {
+                    $headers[] = $cell->getValue();
+                }
+            }
+
+            // Get data rows
+            $rows = [];
+            $highestColumn = $worksheet->getHighestDataColumn();
+
+            for ($rowIndex = $startRow; $rowIndex <= $endRow; $rowIndex++) {
+                $rowData = [];
+                $hasData = false;
+
+                foreach ($worksheet->getRowIterator($rowIndex, $rowIndex) as $row) {
+                    $cellIterator = $row->getCellIterator('A', $highestColumn);
+                    $cellIterator->setIterateOnlyExistingCells(false);
+                    $columnIndex = 0;
+
+                    foreach ($cellIterator as $cell) {
+                        $value = $cell->getValue();
+                        if ($value !== null) {
+                            $hasData = true;
+                        }
+                        $rowData[$headers[$columnIndex] ?? $columnIndex] = $value;
+                        $columnIndex++;
+                    }
+                }
+
+                if ($hasData) {
+                    $rows[] = $rowData;
+                }
+            }
+
+            // Clean up memory
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet, $worksheet, $reader);
+
+            return $rows;
+        } catch (ReaderException $e) {
+            throw new \Exception('Error reading Excel file: ' . $e->getMessage());
+        } catch (\Exception $e) {
+            // Handle memory limit errors specifically
+            if (strpos($e->getMessage(), 'memory') !== false || strpos($e->getMessage(), 'Memory') !== false) {
+                throw new \Exception('File chunk too large to process. The file may be corrupted or contains extremely wide rows.');
+            }
+            throw $e;
         }
     }
 

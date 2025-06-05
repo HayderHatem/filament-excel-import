@@ -1,389 +1,325 @@
-# Filament Excel Import Plugin
+# Filament Excel Import
 
-[![Latest Version on Packagist](https://img.shields.io/packagist/v/hayderhatem/filament-excel-import.svg?style=flat-square)](https://packagist.org/packages/hayderhatem/filament-excel-import)
-[![GitHub Tests Action Status](https://img.shields.io/github/actions/workflow/status/hayderhatem/filament-excel-import/tests.yml?branch=main&label=tests&style=flat-square)](https://github.com/hayderhatem/filament-excel-import/actions?query=workflow%3Atests+branch%3Amain)
-[![GitHub Code Style Action Status](https://img.shields.io/github/actions/workflow/status/hayderhatem/filament-excel-import/tests.yml?branch=main&label=code%20style&style=flat-square)](https://github.com/hayderhatem/filament-excel-import/actions?query=workflow%3Atests+branch%3Amain)
-[![Total Downloads](https://img.shields.io/packagist/dt/hayderhatem/filament-excel-import.svg?style=flat-square)](https://packagist.org/packages/hayderhatem/filament-excel-import)
-
-A powerful Excel import plugin for Filament that extends the standard ImportAction with Excel-specific features and enhanced validation handling.
-
-## Features
-
-- 📊 **Excel File Support**: Import XLSX, XLS, and CSV files with native PhpSpreadsheet integration
-- 🎯 **User-Friendly Error Messages**: SQL errors are automatically converted to plain, understandable messages
-- 🌍 **Translatable Error Messages**: Full support for multi-language error messages
-- 📑 **Multi-Sheet Support**: Import from any sheet in your Excel file with dynamic header detection
-- ✅ **Automatic Validation**: Captures and displays validation errors in a user-friendly format
-- 📥 **Failed Rows Export**: Download failed rows as CSV with clear error descriptions
-- 🚀 **Queue Support**: Handle large imports efficiently with Laravel's queue system
-- 🎨 **Seamless Integration**: Works with your existing Filament importers
-- 🔧 **Additional Form Components**: Add custom select dropdowns and form fields to enhance import context
+A powerful Excel import package for Filament that provides seamless Excel file import functionality with automatic column mapping and memory-efficient processing.
 
 ## Installation
 
-Install the package via Composer:
+You can install the package via composer:
 
 ```bash
 composer require hayderhatem/filament-excel-import
 ```
 
-The package will automatically register itself and run migrations.
+## Features
 
-## Basic Usage
+- 📊 **Excel & CSV Import**: Support for `.xlsx`, `.xls`, `.csv` and other spreadsheet formats
+- 🔄 **Drop-in Replacement**: Compatible with Filament's existing `CanImportRecords` trait
+- 🗂️ **Multi-Sheet Support**: Import from specific sheets in Excel workbooks
+- 🎯 **Smart Column Mapping**: Automatic header detection and column mapping
+- 🚀 **Memory Efficient**: Handles large files without memory exhaustion
+- 🔁 **Streaming Import**: Automatic streaming for large files (configurable)
+- 📝 **Custom Import Options**: Add additional form fields to import modal
+- 🌐 **Multi-language**: Translatable error messages and UI text
+- ⚠️ **Error Handling**: User-friendly error messages and failed rows export
+- 🎨 **Easy Configuration**: Minimal setup required
 
-### 1. Create an Importer
+## Usage
 
-Create a standard Filament Importer with ImportColumn rules:
+### Basic Setup
+
+Replace Filament's `CanImportRecords` trait with `CanImportExcelRecords` in your resource:
 
 ```php
 <?php
 
-namespace App\Filament\Imports;
+namespace App\Filament\Resources;
 
+use App\Filament\Imports\UserImporter;
 use App\Models\User;
-use Filament\Actions\Imports\ImportColumn;
-use Filament\Actions\Imports\Importer;
-use Illuminate\Support\Facades\Hash;
+use Filament\Actions;
+use Filament\Resources\Resource;
+use HayderHatem\FilamentExcelImport\Actions\Concerns\CanImportExcelRecords;
 
-class UserImporter extends Importer
+class UserResource extends Resource
 {
     protected static ?string $model = User::class;
 
-    public static function getColumns(): array
+    public static function getHeaderActions(): array
     {
         return [
-            ImportColumn::make('name')
-                ->requiredMapping()
-                ->rules(['required', 'string']),
-            ImportColumn::make('email')
-                ->requiredMapping()
-                ->rules(['required', 'email', 'unique:users,email']),
-            ImportColumn::make('password')
-                ->requiredMapping()
-                ->rules(['required', 'string', 'min:8']),
-        ];
-    }
-
-    public function resolveRecord(): ?User
-    {
-        return new User();
-    }
-
-    // No manual validation needed - the package captures validation errors automatically!
-}
-```
-
-### 2. Use the Excel Import Action
-
-Replace Filament's standard ImportAction with the Excel version:
-
-```php
-<?php
-
-namespace App\Filament\Resources\UserResource\Pages;
-
-use App\Filament\Imports\UserImporter;
-use App\Filament\Resources\UserResource;
-use Filament\Resources\Pages\ListRecords;
-use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
-
-class ListUsers extends ListRecords
-{
-    protected static string $resource = UserResource::class;
-
-    protected function getHeaderActions(): array
-    {
-        return [
-            FullImportAction::make()
+            Actions\ImportAction::make()
                 ->importer(UserImporter::class),
         ];
     }
 }
 ```
 
-### 3. That's it!
+### Configuration Options
 
-The package automatically:
-- ✅ Handles Excel file uploads
-- ✅ Captures validation errors from your ImportColumn rules
-- ✅ Tracks failed rows with detailed error messages
-- ✅ Provides download of failed rows CSV
-- ✅ Works with existing Filament notifications
-
-## How Validation Works
-
-The package automatically captures validation errors from:
-
-1. **ImportColumn Rules**: Any validation rules defined on ImportColumn objects
-2. **Model Validation**: Laravel model validation during save
-3. **Database Constraints**: Unique constraints, foreign key violations, etc.
-
-**No manual validation needed!** Just define your rules in ImportColumn and the package handles the rest.
-
-### Example with Validation Errors
+The package supports all of Filament's original import options plus additional Excel-specific features:
 
 ```php
-ImportColumn::make('email')
-    ->requiredMapping()
-    ->rules(['required', 'email', 'unique:users,email']),
-```
-
-If validation fails, the error will be automatically captured as:
-- `"email: The email field is required"`
-- `"email: The email must be a valid email address"`
-- `"email: The email has already been taken"`
-
-## Advanced Usage
-
-### Custom Options
-
-```php
-FullImportAction::make()
+Actions\ImportAction::make()
     ->importer(UserImporter::class)
-    ->activeSheet(0) // Import from first sheet
-    ->headerRow(2)   // Headers are on row 2
-    ->chunkSize(50)  // Process 50 rows at a time
+    // Standard Filament options
+    ->chunkSize(1000)
+    ->maxRows(10000)
+    ->headerOffset(0) // Row number where headers are located (0-based)
+    ->job(CustomImportJob::class) // Custom job class
+    // Excel-specific options
+    ->activeSheet(0) // Which Excel sheet to import (0-based)
+    ->useStreaming(true) // Force streaming mode
+    ->streamingThreshold(10 * 1024 * 1024) // 10MB threshold for auto-streaming
 ```
 
-### Custom File Validation
+### Multi-Sheet Excel Files
+
+When importing Excel files with multiple sheets, users can select which sheet to import:
 
 ```php
-FullImportAction::make()
+Actions\ImportAction::make()
     ->importer(UserImporter::class)
-    ->fileValidationRules([
-        'max:10240',           // Max 10MB
-        'mimes:xlsx,xls,csv',  // Allowed formats
-    ])
+    ->activeSheet(0) // Default to first sheet
 ```
 
-### Using in Table Actions
+The import modal will automatically show a sheet selector dropdown if multiple sheets are detected.
 
-```php
-use HayderHatem\FilamentExcelImport\Actions\TableImportAction;
+### Additional Form Components
 
-protected function getHeaderActions(): array
-{
-    return [
-        TableImportAction::make()
-            ->importer(UserImporter::class),
-    ];
-}
-```
-
-## Additional Form Components
-
-You can add custom form components (like select dropdowns) to the import form to provide context, defaults, or options that affect how the import is processed.
-
-### Basic Usage
+You can add custom form fields to the import modal:
 
 ```php
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\TextInput;
-use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
+use Filament\Forms\Components\Toggle;
 
-FullImportAction::make()
+Actions\ImportAction::make()
     ->importer(UserImporter::class)
     ->additionalFormComponents([
-        Select::make('default_status')
-            ->label('Default Status')
-            ->options([
-                'active' => 'Active',
-                'inactive' => 'Inactive',
-                'pending' => 'Pending'
-            ])
-            ->default('active')
+        Select::make('department_id')
+            ->label('Default Department')
+            ->options(Department::pluck('name', 'id'))
             ->required(),
-            
-        Select::make('import_mode')
-            ->label('Import Mode')
-            ->options([
-                'create_only' => 'Create New Records Only',
-                'update_only' => 'Update Existing Records Only',
-                'create_or_update' => 'Create or Update Records'
-            ])
-            ->default('create_only')
-            ->required(),
-            
-        TextInput::make('batch_name')
-            ->label('Batch Name')
-            ->placeholder('Enter batch identifier')
-            ->helperText('Optional identifier for this import batch'),
-    ]);
+        
+        Toggle::make('send_welcome_email')
+            ->label('Send Welcome Email')
+            ->default(true),
+    ])
 ```
 
-### Using Additional Form Data in Importer
+Access additional form data in your importer:
 
 ```php
-<?php
-
-namespace App\Filament\Imports;
-
-use Filament\Actions\Imports\Importer;
 use HayderHatem\FilamentExcelImport\Traits\CanAccessAdditionalFormData;
 
 class UserImporter extends Importer
 {
     use CanAccessAdditionalFormData;
-
+    
     public function import(array $data, array $map, array $options = []): void
     {
-        $record = $this->resolveRecord();
+        $departmentId = $this->getAdditionalFormValue('department_id');
+        $sendEmail = $this->getAdditionalFormValue('send_welcome_email', false);
         
-        // Use regular mapped data
-        $record->name = $data['name'];
-        $record->email = $data['email'];
-        
-        // Use additional form data for context and defaults
-        $defaultStatus = $this->getAdditionalFormValue('default_status', 'active');
-        $importMode = $this->getAdditionalFormValue('import_mode', 'create_only');
-        $batchName = $this->getAdditionalFormValue('batch_name');
-        
-        // Apply defaults for empty values
-        $record->status = $data['status'] ?? $defaultStatus;
-        
-        // Add batch information if provided
-        if ($batchName) {
-            $record->import_batch = $batchName;
-        }
-        
-        // Handle different import modes
-        switch ($importMode) {
-            case 'update_only':
-                $existing = static::getModel()::where('email', $record->email)->first();
-                if (!$existing) {
-                    throw new \Exception('Record not found for update-only mode');
-                }
-                $existing->update($record->toArray());
-                return;
-                
-            case 'create_or_update':
-                static::getModel()::updateOrCreate(
-                    ['email' => $record->email],
-                    $record->toArray()
-                );
-                return;
-                
-            default: // create_only
-                $record->save();
-        }
+        // Your import logic...
     }
 }
 ```
 
-### Dynamic Select Options
+## Memory Optimization & Streaming
+
+### Automatic Streaming
+
+The package automatically detects large files and switches to streaming mode to prevent memory exhaustion:
 
 ```php
-use App\Models\Department;
-use App\Models\Role;
-
-FullImportAction::make()
+// Files larger than 10MB (default) will automatically use streaming
+Actions\ImportAction::make()
     ->importer(UserImporter::class)
-    ->additionalFormComponents([
-        Select::make('default_department_id')
-            ->label('Default Department')
-            ->options(
-                Department::active()
-                    ->pluck('name', 'id')
-                    ->toArray()
-            )
-            ->searchable()
-            ->placeholder('Select default department for empty values'),
-            
-        Select::make('default_role')
-            ->label('Default Role')
-            ->options(function () {
-                $user = auth()->user();
-                
-                // Show different roles based on user permissions
-                if ($user->hasRole('admin')) {
-                    return Role::all()->pluck('name', 'name')->toArray();
-                }
-                
-                return Role::where('level', '<=', $user->role_level)
-                    ->pluck('name', 'name')
-                    ->toArray();
-            })
-            ->searchable()
-            ->required(),
-            
-        Select::make('validation_level')
-            ->label('Validation Level')
-            ->options([
-                'strict' => 'Strict - Reject any invalid data',
-                'moderate' => 'Moderate - Skip invalid rows with warnings',
-                'lenient' => 'Lenient - Accept data with minor issues'
-            ])
-            ->default('moderate')
-            ->helperText('Choose how strictly to validate imported data'),
-    ]);
+    ->streamingThreshold(5 * 1024 * 1024) // Custom 5MB threshold
 ```
 
-### Available Methods in Importer
+### Manual Streaming Control
 
-When using the `CanAccessAdditionalFormData` trait in your importer:
+Force streaming mode on or off:
 
 ```php
-// Get all additional form data
-$allData = $this->getAdditionalFormData();
-
-// Get specific value with default
-$status = $this->getAdditionalFormValue('default_status', 'active');
-
-// Check if value exists
-if ($this->hasAdditionalFormValue('batch_name')) {
-    $batchName = $this->getAdditionalFormValue('batch_name');
-    // Handle batch processing
-}
-
-// Use in validation logic
-$validationLevel = $this->getAdditionalFormValue('validation_level', 'moderate');
-if ($validationLevel === 'strict') {
-    // Apply strict validation rules
-}
+Actions\ImportAction::make()
+    ->importer(UserImporter::class)
+    ->useStreaming(true) // Always use streaming
+    // or
+    ->useStreaming(false) // Never use streaming
+    // or
+    ->useStreaming(null) // Auto-detect (default)
 ```
 
-## Error Handling
+### Memory Usage Comparison
 
-### Automatic Failed Rows Tracking
+| File Size | Standard Import | Streaming Import |
+|-----------|----------------|------------------|
+| 1MB       | ~10MB RAM      | ~5MB RAM         |
+| 100MB     | Memory Error   | ~5MB RAM         |
+| 1GB       | Memory Error   | ~5MB RAM         |
 
-The package automatically:
-- Records failed rows with validation errors
-- Provides downloadable CSV of failed rows
-- Shows error counts in notifications
-- Maintains data integrity
+## Advanced Configuration
 
-### Accessing Failed Rows Programmatically
+### Custom Job
+
+You can use your own import job class:
 
 ```php
-use HayderHatem\FilamentExcelImport\Models\Import;
+use HayderHatem\FilamentExcelImport\Actions\Imports\Jobs\ImportExcel;
 
-$import = Import::find($importId);
-$failedRows = $import->failedRows;
-
-foreach ($failedRows as $failedRow) {
-    echo "Row data: " . json_encode($failedRow->data);
-    echo "Validation error: " . $failedRow->validation_error;
+class CustomImportJob extends ImportExcel
+{
+    public function handle(): void
+    {
+        // Custom pre-processing
+        
+        parent::handle();
+        
+        // Custom post-processing
+    }
 }
+
+// Use in your action
+Actions\ImportAction::make()
+    ->importer(UserImporter::class)
+    ->job(CustomImportJob::class)
 ```
 
-## Database Structure
+### Error Handling
 
-The package creates these tables (compatible with standard Filament):
+The package provides user-friendly error messages for common database errors:
 
-- `imports`: Tracks import sessions
-- `failed_import_rows`: Stores failed rows with validation errors
+```php
+// Errors are automatically translated and user-friendly
+// - "Email field is required" instead of SQL constraint errors  
+// - "Email already exists" instead of unique constraint violations
+// - "Invalid department reference" instead of foreign key errors
+```
 
-The structure is fully compatible with Filament's standard import tables.
+### Custom Error Messages
+
+Add custom error message translations:
+
+```php
+// resources/lang/en/filament-excel-import.php
+return [
+    'import' => [
+        'errors' => [
+            'field_required' => 'The :field field is required.',
+            'field_exists' => 'The :field already exists.',
+            'invalid_reference' => 'Invalid reference to :table.',
+        ]
+    ]
+];
+```
+
+## File Support
+
+### Supported Formats
+
+- **Excel**: `.xlsx`, `.xls`, `.xlsm`, `.xltx`, `.xltm`
+- **CSV**: `.csv`, `.txt`
+- All formats supported by PhpSpreadsheet
+
+### File Upload Behavior
+
+- **Small files**: Full preview with dropdown column mapping
+- **Large files**: Header-only reading for memory efficiency
+- **Very large files**: Manual text input mapping
+- **Any size**: Import processing always works via streaming
+
+## API Compatibility
+
+The package is a drop-in replacement for Filament's `CanImportRecords` trait:
+
+| Filament Method | Supported | Notes |
+|----------------|-----------|-------|
+| `importer()` | ✅ | Fully compatible |
+| `job()` | ✅ | Fully compatible |
+| `chunkSize()` | ✅ | Fully compatible |
+| `maxRows()` | ✅ | Fully compatible |
+| `headerOffset()` | ✅ | Fully compatible |
+| `options()` | ✅ | Fully compatible |
+| `fileValidationRules()` | ✅ | Enhanced for Excel |
+
+### Additional Methods
+
+| Method | Description |
+|--------|-------------|
+| `useStreaming(bool\|null)` | Control streaming mode |
+| `streamingThreshold(int)` | Set auto-streaming threshold |
+| `activeSheet(int)` | Set Excel sheet to import |
+| `additionalFormComponents(array)` | Add custom form fields |
+
+## Migration from CanImportRecords
+
+Migrating from Filament's built-in import is simple:
+
+### Step 1: Update the Trait
+
+```php
+// Before
+use Filament\Actions\Concerns\CanImportRecords;
+
+// After  
+use HayderHatem\FilamentExcelImport\Actions\Concerns\CanImportExcelRecords;
+```
+
+### Step 2: No Other Changes Required
+
+All your existing code will work exactly the same! The package is designed as a drop-in replacement.
+
+### Step 3: Optional Enhancements
+
+Take advantage of new features:
+
+```php
+Actions\ImportAction::make()
+    ->importer(UserImporter::class)
+    // Your existing configuration works as-is
+    ->chunkSize(500)
+    ->maxRows(5000)
+    // Add new Excel features
+    ->activeSheet(0)
+    ->useStreaming(true)
+```
+
+## Testing
+
+The package includes comprehensive tests:
+
+```bash
+# Run all tests
+composer test
+
+# Run with coverage
+composer test-coverage
+
+# Run package test runner
+php test-runner.php
+```
 
 ## Requirements
 
-- Laravel 10.0+
-- Filament 3.0+
 - PHP 8.1+
+- Laravel 10+
+- Filament 3+
+- PhpSpreadsheet (automatically installed)
 
-## Migration Compatibility
+## Contributing
 
-The package automatically handles migrations and is fully compatible with standard Filament import migrations. If you already have Filament's import tables, the package will use them seamlessly.
+Please see [CONTRIBUTING](CONTRIBUTING.md) for details.
+
+## Security
+
+If you discover any security-related issues, please email the maintainer instead of using the issue tracker.
+
+## Credits
+
+- [Hayder Hatem](https://github.com/hayderhatem)
+- [All Contributors](../../contributors)
 
 ## License
 

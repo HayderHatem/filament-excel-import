@@ -47,7 +47,7 @@ trait CanImportExcelRecords
     protected ?string $job = null;
     protected int | Closure $chunkSize = 100;
     protected int | Closure | null $maxRows = null;
-    protected int | Closure | null $headerRow = null;
+    protected int | Closure | null $headerOffset = null;
     protected int | Closure | null $activeSheet = null;
     /**
      * @var array<string, mixed> | Closure
@@ -64,6 +64,16 @@ trait CanImportExcelRecords
      */
     protected array $additionalFormComponents = [];
 
+    /**
+     * Whether to use streaming import for large files (default: auto-detect)
+     */
+    protected bool | Closure | null $useStreaming = null;
+
+    /**
+     * File size threshold for auto-enabling streaming (in bytes)
+     */
+    protected int | Closure $streamingThreshold = 10485760; // 10MB
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -75,8 +85,8 @@ trait CanImportExcelRecords
 
         $this->form(fn(ImportAction | ImportTableAction $action): array => array_merge([
             FileUpload::make('file')
-                ->label(__('filament-excel-import::import.modal.form.file.label'))
-                ->placeholder(__('filament-excel-import::import.modal.form.file.placeholder'))
+                ->label(__('filament-actions::import.modal.form.file.label'))
+                ->placeholder(__('filament-actions::import.modal.form.file.placeholder'))
                 ->acceptedFileTypes([
                     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                     'application/vnd.ms-excel',
@@ -105,28 +115,29 @@ trait CanImportExcelRecords
                     }
 
                     try {
-                        $spreadsheet = $this->getUploadedFileSpreadsheet($state);
-                        if (! $spreadsheet) {
+                        // Only read headers for column mapping - much more memory efficient
+                        $headers = $this->getExcelHeaders($state, $action->getHeaderOffset() ?? 0);
+
+                        if (empty($headers)) {
+                            // No headers found, use manual mapping
+                            $this->setBasicColumnMapping($set, $action);
+
+                            Notification::make()
+                                ->title(__('No headers detected'))
+                                ->body(__('Could not detect column headers. Please map columns manually using the text inputs below.'))
+                                ->warning()
+                                ->send();
+
                             return;
                         }
-                        $worksheet = $this->getActiveWorksheet($spreadsheet);
-                        $headerRow = $action->getHeaderRow() ?? 1;
-                        // Get header row from the worksheet
-                        $excelColumns = [];
-                        foreach ($worksheet->getRowIterator($headerRow, $headerRow) as $row) {
-                            $cellIterator = $row->getCellIterator();
-                            $cellIterator->setIterateOnlyExistingCells(false);
-                            foreach ($cellIterator as $cell) {
-                                if ($cell->getValue() !== null) {
-                                    $excelColumns[] = (string) $cell->getValue();
-                                }
-                            }
-                        }
-                        $lowercaseExcelColumnValues = array_map(Str::lower(...), $excelColumns);
+
+                        // Set up column mapping with detected headers
+                        $lowercaseExcelColumnValues = array_map(Str::lower(...), $headers);
                         $lowercaseExcelColumnKeys = array_combine(
                             $lowercaseExcelColumnValues,
-                            $excelColumns,
+                            $headers,
                         );
+
                         $set('columnMap', array_reduce($action->getImporter()::getColumns(), function (array $carry, ImportColumn $column) use ($lowercaseExcelColumnKeys, $lowercaseExcelColumnValues) {
                             $carry[$column->getName()] = $lowercaseExcelColumnKeys[Arr::first(
                                 array_intersect(
@@ -138,22 +149,31 @@ trait CanImportExcelRecords
                             return $carry;
                         }, []));
 
-                        // Set available sheets for selection
-                        $sheetNames = [];
-                        $index = 0;
-                        foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
-                            $sheetNames[$index] = $sheet->getTitle();
-                            $index++;
+                        // Try to get sheet names for multi-sheet files (but don't fail if it doesn't work)
+                        try {
+                            $sheetNames = $this->getExcelSheetNames($state);
+                            if (!empty($sheetNames)) {
+                                $set('availableSheets', $sheetNames);
+                                $set('activeSheet', $action->getActiveSheet() ?? 0);
+                            } else {
+                                $set('availableSheets', []);
+                                $set('activeSheet', null);
+                            }
+                        } catch (\Throwable $e) {
+                            // If sheet detection fails, just continue without it
+                            $set('availableSheets', []);
+                            $set('activeSheet', null);
                         }
-                        $set('availableSheets', $sheetNames);
-                        $set('activeSheet', $action->getActiveSheet() ?? 0);
-                    } catch (ReaderException $e) {
+                    } catch (\Throwable $e) {
+                        // Handle any errors during header reading
                         Notification::make()
-                            ->title(__('Error reading Excel file'))
-                            ->body($e->getMessage())
-                            ->danger()
+                            ->title(__('File preview unavailable'))
+                            ->body(__('Unable to preview file contents. You can still import, but please map columns manually.'))
+                            ->warning()
                             ->send();
-                        $component->state([]);
+
+                        // Set basic column mapping as fallback
+                        $this->setBasicColumnMapping($set, $action);
                     }
                 })
                 ->storeFiles(false)
@@ -172,31 +192,22 @@ trait CanImportExcelRecords
                     }
 
                     try {
-                        $spreadsheet = $this->getUploadedFileSpreadsheet($file);
-                        if (! $spreadsheet) {
+                        // Use lightweight header reading for the selected sheet
+                        $headers = $this->getExcelHeaders($file, $action->getHeaderOffset() ?? 0);
+
+                        if (empty($headers)) {
+                            // No headers found, reset to manual mapping
+                            $this->setBasicColumnMapping($set, $action);
                             return;
-                        }
-                        $worksheet = $spreadsheet->getSheet((int) $state);
-                        $headerRow = $action->getHeaderRow() ?? 1;
-                        // Get header row from the worksheet
-                        $excelColumns = [];
-                        foreach ($worksheet->getRowIterator($headerRow, $headerRow) as $row) {
-                            $cellIterator = $row->getCellIterator();
-                            $cellIterator->setIterateOnlyExistingCells(false);
-                            foreach ($cellIterator as $cell) {
-                                if ($cell->getValue() !== null) {
-                                    $excelColumns[] = (string) $cell->getValue();
-                                }
-                            }
                         }
 
                         // Reset column map to ensure clean state
                         $set('columnMap', []);
 
-                        $lowercaseExcelColumnValues = array_map(Str::lower(...), $excelColumns);
+                        $lowercaseExcelColumnValues = array_map(Str::lower(...), $headers);
                         $lowercaseExcelColumnKeys = array_combine(
                             $lowercaseExcelColumnValues,
-                            $excelColumns,
+                            $headers,
                         );
 
                         // Set new column mapping
@@ -210,11 +221,14 @@ trait CanImportExcelRecords
 
                             return $carry;
                         }, []));
-                    } catch (ReaderException $e) {
+                    } catch (\Throwable $e) {
+                        // Handle any errors
+                        $this->setBasicColumnMapping($set, $action);
+
                         Notification::make()
-                            ->title(__('Error reading Excel sheet'))
-                            ->body($e->getMessage())
-                            ->danger()
+                            ->title(__('Sheet reading error'))
+                            ->body(__('Unable to read the selected sheet. Column mapping has been reset.'))
+                            ->warning()
                             ->send();
                     }
                 }),
@@ -229,36 +243,24 @@ trait CanImportExcelRecords
                         return [];
                     }
 
-                    // Get the selected sheet index
-                    $activeSheetIndex = $get('activeSheet') ?? $action->getActiveSheet() ?? 0;
-
                     try {
-                        $spreadsheet = $this->getUploadedFileSpreadsheet($file);
-                        if (! $spreadsheet) {
-                            return [];
+                        // Use lightweight header reading
+                        $headers = $this->getExcelHeaders($file, $action->getHeaderOffset() ?? 0);
+
+                        if (empty($headers)) {
+                            // No headers found, fallback to manual mapping
+                            return $this->getManualColumnMappingSchema($action);
                         }
 
-                        $worksheet = $spreadsheet->getSheet((int) $activeSheetIndex);
-                        $headerRow = $action->getHeaderRow() ?? 1;
-                        // Get header row from the worksheet
-                        $excelColumns = [];
-                        foreach ($worksheet->getRowIterator($headerRow, $headerRow) as $row) {
-                            $cellIterator = $row->getCellIterator('A', $worksheet->getHighestDataColumn());
-                            $cellIterator->setIterateOnlyExistingCells(false);
-                            foreach ($cellIterator as $cell) {
-                                if ($cell->getValue() !== null) {
-                                    $excelColumns[] = (string) $cell->getValue();
-                                }
-                            }
-                        }
-                        $excelColumnOptions = array_combine($excelColumns, $excelColumns);
+                        $excelColumnOptions = array_combine($headers, $headers);
 
                         return array_map(
                             fn(ImportColumn $column): Select => $column->getSelect()->options($excelColumnOptions),
                             $action->getImporter()::getColumns(),
                         );
-                    } catch (ReaderException $e) {
-                        return [];
+                    } catch (\Throwable $e) {
+                        // Any error during column reading, fallback to manual mapping
+                        return $this->getManualColumnMappingSchema($action);
                     }
                 })
                 ->statePath('columnMap')
@@ -274,48 +276,9 @@ trait CanImportExcelRecords
             $additionalFormData = $this->extractAdditionalFormData($data);
 
             try {
-                $spreadsheet = $this->getUploadedFileSpreadsheet($excelFile);
-                if (! $spreadsheet) {
-                    return;
-                }
+                // Use streaming approach to get total row count without loading everything into memory
+                $totalRows = $this->getExcelRowCount($excelFile, $activeSheetIndex, $action->getHeaderOffset() ?? 0);
 
-                $worksheet = $spreadsheet->getSheet((int) $activeSheetIndex);
-                $headerRow = $action->getHeaderRow() ?? 1;
-                // Get all data from the worksheet
-                $rows = [];
-                $highestRow = $worksheet->getHighestDataRow();
-                $highestColumn = $worksheet->getHighestDataColumn();
-                // Get header row
-                $headers = [];
-                foreach ($worksheet->getRowIterator($headerRow, $headerRow) as $row) {
-                    $cellIterator = $row->getCellIterator('A', $highestColumn);
-                    $cellIterator->setIterateOnlyExistingCells(false);
-                    foreach ($cellIterator as $cell) {
-                        $headers[] = $cell->getValue();
-                    }
-                }
-                // Get data rows
-                for ($rowIndex = $headerRow + 1; $rowIndex <= $highestRow; $rowIndex++) {
-                    $rowData = [];
-                    $hasData = false;
-                    foreach ($worksheet->getRowIterator($rowIndex, $rowIndex) as $row) {
-                        $cellIterator = $row->getCellIterator('A', $highestColumn);
-                        $cellIterator->setIterateOnlyExistingCells(false);
-                        $columnIndex = 0;
-                        foreach ($cellIterator as $cell) {
-                            $value = $cell->getValue();
-                            if ($value !== null) {
-                                $hasData = true;
-                            }
-                            $rowData[$headers[$columnIndex] ?? $columnIndex] = $value;
-                            $columnIndex++;
-                        }
-                    }
-                    if ($hasData) {
-                        $rows[] = $rowData;
-                    }
-                }
-                $totalRows = count($rows);
                 $maxRows = $action->getMaxRows() ?? $totalRows;
                 if ($maxRows < $totalRows) {
                     Notification::make()
@@ -331,12 +294,15 @@ trait CanImportExcelRecords
 
                 $user = Auth::check() ? Auth::user() : null;
 
+                // Store the uploaded file permanently for streaming processing
+                $permanentFilePath = $this->storePermanentFile($excelFile);
+
                 $import = app(Import::class);
                 if ($user) {
                     $import->user()->associate($user);
                 }
                 $import->file_name = $excelFile->getClientOriginalName();
-                $import->file_path = $excelFile->getRealPath();
+                $import->file_path = $permanentFilePath;
                 $import->importer = $action->getImporter();
                 $import->total_rows = $totalRows;
                 $import->save();
@@ -348,7 +314,11 @@ trait CanImportExcelRecords
                 $options = array_merge(
                     $action->getOptions(),
                     Arr::except($data, ['file', 'columnMap']),
-                    ['additional_form_data' => $additionalFormData]
+                    [
+                        'additional_form_data' => $additionalFormData,
+                        'activeSheet' => $activeSheetIndex,
+                        'headerOffset' => $action->getHeaderOffset() ?? 0
+                    ]
                 );
 
                 // Unset non-serializable relations to prevent issues
@@ -356,14 +326,113 @@ trait CanImportExcelRecords
 
                 $columnMap = $data['columnMap'];
 
-                // Create import chunks with import ID instead of full model
-                $importChunks = collect($rows)->chunk($action->getChunkSize())
-                    ->map(fn($chunk) => app($action->getJob(), [
-                        'importId' => $importId,
-                        'rows' => base64_encode(serialize($chunk->all())),
-                        'columnMap' => $columnMap,
-                        'options' => $options,
-                    ]));
+                // Determine if we should use streaming import
+                $useStreaming = $this->shouldUseStreaming($excelFile);
+
+                if ($useStreaming) {
+                    // Create streaming import chunks based on row ranges instead of loading data
+                    $chunkSize = $action->getChunkSize();
+                    $headerOffset = $action->getHeaderOffset() ?? 0;
+                    $startDataRow = $headerOffset + 2; // Header offset + 1 for header row + 1 for first data row
+                    $endDataRow = $headerOffset + 1 + $totalRows;
+
+                    $importChunks = collect();
+                    for ($currentRow = $startDataRow; $currentRow <= $endDataRow; $currentRow += $chunkSize) {
+                        $endChunkRow = min($currentRow + $chunkSize - 1, $endDataRow);
+
+                        $importChunks->push(app($action->getJob(), [
+                            'importId' => $importId,
+                            'rows' => null,
+                            'startRow' => $currentRow,
+                            'endRow' => $endChunkRow,
+                            'columnMap' => $columnMap,
+                            'options' => $options,
+                        ]));
+                    }
+                } else {
+                    // Fall back to original approach for smaller files
+                    try {
+                        $spreadsheet = $this->getUploadedFileSpreadsheet($excelFile);
+                        if (! $spreadsheet) {
+                            return;
+                        }
+
+                        $worksheet = $spreadsheet->getSheet((int) $activeSheetIndex);
+                        $headerOffset = $action->getHeaderOffset() ?? 0;
+                        // Get all data from the worksheet
+                        $rows = [];
+                        $highestRow = $worksheet->getHighestDataRow();
+                        $highestColumn = $worksheet->getHighestDataColumn();
+                        // Get header row
+                        $headers = [];
+                        $headerRowNumber = $headerOffset + 1;
+                        foreach ($worksheet->getRowIterator($headerRowNumber, $headerRowNumber) as $row) {
+                            $cellIterator = $row->getCellIterator('A', $highestColumn);
+                            $cellIterator->setIterateOnlyExistingCells(false);
+                            foreach ($cellIterator as $cell) {
+                                $headers[] = $cell->getValue();
+                            }
+                        }
+                        // Get data rows
+                        for ($rowIndex = $headerRowNumber + 1; $rowIndex <= $highestRow; $rowIndex++) {
+                            $rowData = [];
+                            $hasData = false;
+                            foreach ($worksheet->getRowIterator($rowIndex, $rowIndex) as $row) {
+                                $cellIterator = $row->getCellIterator('A', $highestColumn);
+                                $cellIterator->setIterateOnlyExistingCells(false);
+                                $columnIndex = 0;
+                                foreach ($cellIterator as $cell) {
+                                    $value = $cell->getValue();
+                                    if ($value !== null) {
+                                        $hasData = true;
+                                    }
+                                    $rowData[$headers[$columnIndex] ?? $columnIndex] = $value;
+                                    $columnIndex++;
+                                }
+                            }
+                            if ($hasData) {
+                                $rows[] = $rowData;
+                            }
+                        }
+
+                        // Create import chunks with import ID instead of full model
+                        $importChunks = collect($rows)->chunk($action->getChunkSize())
+                            ->map(fn($chunk) => app($action->getJob(), [
+                                'importId' => $importId,
+                                'rows' => base64_encode(serialize($chunk->all())),
+                                'startRow' => null,
+                                'endRow' => null,
+                                'columnMap' => $columnMap,
+                                'options' => $options,
+                            ]));
+                    } catch (\Exception $e) {
+                        // If regular loading fails, fall back to streaming
+                        Notification::make()
+                            ->title(__('Switching to streaming mode'))
+                            ->body(__('File too large for standard processing, using streaming import...'))
+                            ->info()
+                            ->send();
+
+                        $chunkSize = $action->getChunkSize();
+                        $headerOffset = $action->getHeaderOffset() ?? 0;
+                        $startDataRow = $headerOffset + 2;
+                        $endDataRow = $headerOffset + 1 + $totalRows;
+
+                        $importChunks = collect();
+                        for ($currentRow = $startDataRow; $currentRow <= $endDataRow; $currentRow += $chunkSize) {
+                            $endChunkRow = min($currentRow + $chunkSize - 1, $endDataRow);
+
+                            $importChunks->push(app($action->getJob(), [
+                                'importId' => $importId,
+                                'rows' => null,
+                                'startRow' => $currentRow,
+                                'endRow' => $endChunkRow,
+                                'columnMap' => $columnMap,
+                                'options' => $options,
+                            ]));
+                        }
+                    }
+                }
 
                 // Get importer with proper parameters
                 $importer = $import->getImporter(
@@ -387,7 +456,7 @@ trait CanImportExcelRecords
                         filled($jobBatchName = $importer->getJobBatchName()),
                         fn(PendingBatch $batch) => $batch->name($jobBatchName),
                     )
-                    ->finally(function () use ($importId, $columnMap, $options, $jobConnection) {
+                    ->finally(function () use ($importId, $columnMap, $options, $jobConnection, $permanentFilePath) {
                         // Retrieve fresh import from database in the callback to avoid serialization issues
                         $import = Import::query()->find($importId);
 
@@ -396,6 +465,11 @@ trait CanImportExcelRecords
                         }
 
                         $import->touch('completed_at');
+
+                        // Clean up the temporary file after import is complete
+                        if (file_exists($permanentFilePath)) {
+                            @unlink($permanentFilePath);
+                        }
 
                         event(new ImportCompleted($import, $columnMap, $options));
 
@@ -471,7 +545,7 @@ trait CanImportExcelRecords
                 $this instanceof TableAction => TableAction::class,
                 default => Action::class,
             })::make('downloadExample')
-                ->label(__('filament-excel-import::import.actions.example_template.label'))
+                ->label(__('filament-actions::import.actions.example_template.label'))
                 ->link()
                 ->action(function (): StreamedResponse {
                     $columns = $this->getImporter()::getColumns();
@@ -525,7 +599,9 @@ trait CanImportExcelRecords
     }
 
     /**
-     * Get the uploaded file spreadsheet.
+     * Get the uploaded file spreadsheet (legacy method - kept for compatibility).
+     * NOTE: This method is now primarily used for backward compatibility.
+     * For header reading, use getExcelHeaders() instead for better memory efficiency.
      */
     protected function getUploadedFileSpreadsheet(TemporaryUploadedFile $file): ?Spreadsheet
     {
@@ -536,54 +612,20 @@ trait CanImportExcelRecords
 
         try {
             $reader = IOFactory::createReaderForFile($path);
-
-            // Apply memory optimizations for large files
             $reader->setReadDataOnly(true);
             $reader->setReadEmptyCells(false);
 
-            // If file size is large, apply additional optimizations
-            $fileSize = filesize($path);
-            $maxFileSize = 10 * 1024 * 1024; // 10MB threshold
-
-            if ($fileSize > $maxFileSize) {
-                // For very large files, try to use minimal memory
-                if (method_exists($reader, 'setReadFilter')) {
-                    // Set a read filter to limit the number of rows initially read for structure detection
-                    $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
-                        public function readCell($columnAddress, $row, $worksheetName = ''): bool
-                        {
-                            // Only read first 1000 rows for structure detection to save memory
-                            return $row <= 1000;
-                        }
-                    });
+            // Very restrictive filter - only read first few rows and columns
+            $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                public function readCell($columnAddress, $row, $worksheetName = ''): bool
+                {
+                    // Only read first 3 rows and first 50 columns to minimize memory
+                    return $row <= 3 && preg_match('/^[A-Z]{1,2}$/', preg_replace('/\d+/', '', $columnAddress));
                 }
-            }
+            });
 
             return $reader->load($path);
-        } catch (ReaderException $e) {
-            Notification::make()
-                ->title(__('Error reading Excel file'))
-                ->body($e->getMessage())
-                ->danger()
-                ->send();
-
-            return null;
-        } catch (\Exception $e) {
-            // Handle memory limit errors specifically
-            if (strpos($e->getMessage(), 'memory') !== false || strpos($e->getMessage(), 'Memory') !== false) {
-                Notification::make()
-                    ->title(__('File too large'))
-                    ->body(__('The uploaded file is too large to process. Please try uploading a smaller file or contact your administrator to increase the memory limit.'))
-                    ->danger()
-                    ->send();
-            } else {
-                Notification::make()
-                    ->title(__('Error reading Excel file'))
-                    ->body($e->getMessage())
-                    ->danger()
-                    ->send();
-            }
-
+        } catch (\Throwable $e) {
             return null;
         }
     }
@@ -687,9 +729,9 @@ trait CanImportExcelRecords
     /**
      * Get the header row number (1-based).
      */
-    public function getHeaderRow(): ?int
+    public function getHeaderOffset(): ?int
     {
-        return $this->evaluate($this->headerRow);
+        return $this->evaluate($this->headerOffset);
     }
 
     /**
@@ -697,9 +739,9 @@ trait CanImportExcelRecords
      *
      * @param  int | Closure | null  $row
      */
-    public function headerRow(int | Closure | null $row): static
+    public function headerOffset(int | Closure | null $row): static
     {
-        $this->headerRow = $row;
+        $this->headerOffset = $row;
 
         return $this;
     }
@@ -829,5 +871,253 @@ trait CanImportExcelRecords
             ->toArray();
 
         return Arr::only($data, $additionalKeys);
+    }
+
+    /**
+     * Store the uploaded file permanently for streaming processing.
+     */
+    protected function storePermanentFile(TemporaryUploadedFile $file): string
+    {
+        $path = $file->getRealPath();
+        $permanentFilePath = tempnam(sys_get_temp_dir(), 'import_');
+        if (! $permanentFilePath) {
+            throw new \Exception('Failed to create temporary file');
+        }
+
+        try {
+            copy($path, $permanentFilePath);
+            return $permanentFilePath;
+        } catch (\Exception $e) {
+            throw new \Exception('Failed to store file permanently: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get the Excel row count without loading everything into memory.
+     */
+    protected function getExcelRowCount(TemporaryUploadedFile $file, int $activeSheetIndex, int $headerOffset): int
+    {
+        $path = $file->getRealPath();
+        if (! file_exists($path)) {
+            throw new \Exception('File not found');
+        }
+
+        try {
+            $reader = IOFactory::createReaderForFile($path);
+            $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+
+            $spreadsheet = $reader->load($path);
+            $worksheet = $spreadsheet->getSheet($activeSheetIndex);
+
+            $highestRow = $worksheet->getHighestDataRow();
+            $dataRowCount = 0;
+
+            // Count rows with data starting from header offset + 1 + 1 (first data row)
+            for ($row = $headerOffset + 2; $row <= $highestRow; $row++) {
+                $hasData = false;
+                foreach ($worksheet->getRowIterator($row, $row) as $rowIterator) {
+                    $cellIterator = $rowIterator->getCellIterator();
+                    $cellIterator->setIterateOnlyExistingCells(false);
+                    foreach ($cellIterator as $cell) {
+                        if ($cell->getValue() !== null) {
+                            $hasData = true;
+                            break;
+                        }
+                    }
+                    if ($hasData) {
+                        break;
+                    }
+                }
+                if ($hasData) {
+                    $dataRowCount++;
+                }
+            }
+
+            // Clean up memory
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet, $worksheet, $reader);
+
+            return $dataRowCount;
+        } catch (\Exception $e) {
+            throw new \Exception('Error getting Excel row count: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Set whether to use streaming import.
+     */
+    public function useStreaming(bool | Closure | null $useStreaming = true): static
+    {
+        $this->useStreaming = $useStreaming;
+        return $this;
+    }
+
+    /**
+     * Get whether to use streaming import.
+     */
+    public function getUseStreaming(): ?bool
+    {
+        return $this->evaluate($this->useStreaming);
+    }
+
+    /**
+     * Set the file size threshold for auto-enabling streaming.
+     */
+    public function streamingThreshold(int | Closure $threshold): static
+    {
+        $this->streamingThreshold = $threshold;
+        return $this;
+    }
+
+    /**
+     * Get the file size threshold for auto-enabling streaming.
+     */
+    public function getStreamingThreshold(): int
+    {
+        return $this->evaluate($this->streamingThreshold);
+    }
+
+    /**
+     * Determine if streaming should be used based on file size and configuration.
+     */
+    protected function shouldUseStreaming(TemporaryUploadedFile $file): bool
+    {
+        $useStreaming = $this->getUseStreaming();
+
+        // If explicitly set, use that
+        if ($useStreaming !== null) {
+            return $useStreaming;
+        }
+
+        // Auto-detect based on file size
+        $fileSize = filesize($file->getRealPath());
+        return $fileSize > $this->getStreamingThreshold();
+    }
+
+    /**
+     * Set basic column mapping as fallback.
+     */
+    protected function setBasicColumnMapping(Forms\Set $set, ImportAction | ImportTableAction $action): void
+    {
+        $set('columnMap', []);
+        $set('availableSheets', []);
+        $set('activeSheet', null);
+    }
+
+    /**
+     * Get the manual column mapping schema.
+     */
+    protected function getManualColumnMappingSchema(ImportAction | ImportTableAction $action): array
+    {
+        return array_map(
+            fn(ImportColumn $column): Forms\Components\TextInput => Forms\Components\TextInput::make($column->getName())
+                ->label($column->getLabel())
+                ->placeholder('Enter column name from Excel file (e.g., "Name", "Email")')
+                ->helperText('Type the exact column header from your Excel file'),
+            $action->getImporter()::getColumns(),
+        );
+    }
+
+    /**
+     * Get Excel headers only (first row) - memory efficient.
+     */
+    protected function getExcelHeaders(TemporaryUploadedFile $file, int $headerOffset = 0): array
+    {
+        $path = $file->getRealPath();
+        if (!file_exists($path)) {
+            return [];
+        }
+
+        try {
+            $reader = IOFactory::createReaderForFile($path);
+            $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+
+            $headerRowNumber = $headerOffset + 1;
+
+            // Only read the header row - extremely restrictive filter
+            $reader->setReadFilter(new class($headerRowNumber) implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                public function __construct(private int $headerRowNumber) {}
+
+                public function readCell($columnAddress, $row, $worksheetName = ''): bool
+                {
+                    // Only read the specific header row
+                    return $row === $this->headerRowNumber;
+                }
+            });
+
+            $spreadsheet = $reader->load($path);
+            $worksheet = $spreadsheet->getActiveSheet();
+
+            // Extract headers quickly
+            $headers = [];
+            $row = $worksheet->getRowIterator($headerRowNumber, $headerRowNumber)->current();
+            if ($row) {
+                $cellIterator = $row->getCellIterator();
+                $cellIterator->setIterateOnlyExistingCells(false);
+                foreach ($cellIterator as $cell) {
+                    $value = $cell->getValue();
+                    if ($value !== null) {
+                        $headers[] = (string) $value;
+                    } else {
+                        // Stop at first empty cell to avoid reading too far
+                        break;
+                    }
+                }
+            }
+
+            // Immediate cleanup
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet, $worksheet, $reader);
+
+            return $headers;
+        } catch (\Throwable $e) {
+            return [];
+        }
+    }
+
+    /**
+     * Get Excel sheet names - memory efficient.
+     */
+    protected function getExcelSheetNames(TemporaryUploadedFile $file): array
+    {
+        $path = $file->getRealPath();
+        if (!file_exists($path)) {
+            return [];
+        }
+
+        try {
+            $reader = IOFactory::createReaderForFile($path);
+            $reader->setReadDataOnly(true);
+            $reader->setReadEmptyCells(false);
+
+            // Only read first cell of first row to minimize memory usage
+            $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                public function readCell($columnAddress, $row, $worksheetName = ''): bool
+                {
+                    // Only read A1 cell from each sheet
+                    return $columnAddress === 'A1' && $row === 1;
+                }
+            });
+
+            $spreadsheet = $reader->load($path);
+
+            // Extract sheet names quickly
+            $sheetNames = [];
+            $index = 0;
+            foreach ($spreadsheet->getWorksheetIterator() as $sheet) {
+                $sheetNames[$index] = $sheet->getTitle();
+                $index++;
+            }
+
+            // Immediate cleanup
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet, $reader);
+
+            return $sheetNames;
+        } catch (\Throwable $e) {
+            return [];
+        }
     }
 }
