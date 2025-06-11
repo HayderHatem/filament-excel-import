@@ -19,6 +19,8 @@ use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\Exception as ReaderException;
 use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
 use Throwable;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Filesystem\AwsS3V3Adapter;
 
 class ImportExcel implements ShouldQueue
 {
@@ -190,16 +192,88 @@ class ImportExcel implements ShouldQueue
     }
 
     /**
+     * Check if the file path is an S3 URL
+     */
+    protected function isS3FilePath(string $filePath): bool
+    {
+        return str_starts_with($filePath, 's3://');
+    }
+
+    /**
+     * Ensure S3 stream wrapper is registered for S3 files
+     */
+    protected function ensureS3StreamWrapper(string $filePath): void
+    {
+        if ($this->isS3FilePath($filePath)) {
+            // Extract bucket and file path from S3 URL
+            if (preg_match('/^s3:\/\/([^\/]+)\/(.+)$/', $filePath, $matches)) {
+                $bucket = $matches[1];
+
+                // Find the disk configuration for this bucket
+                foreach (config('filesystems.disks') as $diskName => $diskConfig) {
+                    if (($diskConfig['driver'] ?? '') === 's3' && ($diskConfig['bucket'] ?? '') === $bucket) {
+                        /** @var \Illuminate\Filesystem\FilesystemAdapter $disk */
+                        $disk = Storage::disk($diskName);
+                        /** @var AwsS3V3Adapter $s3Adapter */
+                        $s3Adapter = $disk->getAdapter();
+
+                        // Register S3 stream wrapper - handle different adapter versions
+                        try {
+                            if (method_exists($s3Adapter, 'getClient')) {
+                                $s3Client = $s3Adapter->getClient();
+                                $s3Client->registerStreamWrapper();
+                            } else {
+                                // For newer versions, try using invade to access the client
+                                invade($s3Adapter)->client->registerStreamWrapper();
+                            }
+                        } catch (\Throwable $e) {
+                            // If stream wrapper registration fails, we'll try without it
+                            \Illuminate\Support\Facades\Log::warning('Failed to register S3 stream wrapper', [
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                        /** @phpstan-ignore-line */
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Check if file exists (works for both local and S3 files)
+     */
+    protected function fileExists(string $filePath): bool
+    {
+        if ($this->isS3FilePath($filePath)) {
+            $this->ensureS3StreamWrapper($filePath);
+            return file_exists($filePath);
+        }
+
+        return file_exists($filePath);
+    }
+
+    /**
      * Read specific rows from Excel file using streaming approach
      */
     protected function readExcelRowsFromFile(string $filePath, int $startRow, int $endRow): array
     {
-        if (!file_exists($filePath)) {
+        if (!$this->fileExists($filePath)) {
             throw new \Exception("Import file not found: {$filePath}");
         }
 
+        $tempFile = null;
+
         try {
-            $reader = IOFactory::createReaderForFile($filePath);
+            // For S3 files, download to temporary file for reliable reading
+            if ($this->isS3FilePath($filePath)) {
+                $tempFile = $this->downloadS3FileTemporarily($filePath);
+                $actualFilePath = $tempFile;
+            } else {
+                $actualFilePath = $filePath;
+            }
+
+            $reader = IOFactory::createReaderForFile($actualFilePath);
 
             // Apply memory optimizations
             $reader->setReadDataOnly(true);
@@ -223,16 +297,30 @@ class ImportExcel implements ShouldQueue
                 }
             });
 
-            $spreadsheet = $reader->load($filePath);
+            $spreadsheet = $reader->load($actualFilePath);
 
             // Get the active sheet (assuming sheet index is stored in options)
             $activeSheetIndex = $this->options['activeSheet'] ?? 0;
             $worksheet = $spreadsheet->getSheet($activeSheetIndex);
 
-            // Get headers from row 1
-            $headers = [];
+            // Check if the file has enough rows
+            $highestRow = $worksheet->getHighestDataRow();
             $headerOffset = $this->options['headerOffset'] ?? 0;
             $headerRowNumber = $headerOffset + 1;
+
+            // If start row is beyond the highest row, return empty array
+            if ($startRow > $highestRow) {
+                // Clean up memory
+                $spreadsheet->disconnectWorksheets();
+                unset($spreadsheet, $worksheet, $reader);
+                return [];
+            }
+
+            // Adjust end row to not exceed the highest row
+            $adjustedEndRow = min($endRow, $highestRow);
+
+            // Get headers from row 1
+            $headers = [];
             foreach ($worksheet->getRowIterator($headerRowNumber, $headerRowNumber) as $row) {
                 $cellIterator = $row->getCellIterator();
                 $cellIterator->setIterateOnlyExistingCells(false);
@@ -245,7 +333,7 @@ class ImportExcel implements ShouldQueue
             $rows = [];
             $highestColumn = $worksheet->getHighestDataColumn();
 
-            for ($rowIndex = $startRow; $rowIndex <= $endRow; $rowIndex++) {
+            for ($rowIndex = $startRow; $rowIndex <= $adjustedEndRow; $rowIndex++) {
                 $rowData = [];
                 $hasData = false;
 
@@ -280,6 +368,65 @@ class ImportExcel implements ShouldQueue
             // Handle memory limit errors specifically
             if (strpos($e->getMessage(), 'memory') !== false || strpos($e->getMessage(), 'Memory') !== false) {
                 throw new \Exception('File chunk too large to process. The file may be corrupted or contains extremely wide rows.');
+            }
+            throw $e;
+        } finally {
+            // Clean up temporary file if it was created
+            if ($tempFile && file_exists($tempFile)) {
+                @unlink($tempFile);
+            }
+        }
+    }
+
+    /**
+     * Download S3 file to temporary location for reliable reading
+     */
+    protected function downloadS3FileTemporarily(string $s3FilePath): string
+    {
+        // Extract bucket and key from S3 URL
+        if (!preg_match('/^s3:\/\/([^\/]+)\/(.+)$/', $s3FilePath, $matches)) {
+            throw new \Exception("Invalid S3 path format: {$s3FilePath}");
+        }
+
+        $bucket = $matches[1];
+        $key = $matches[2];
+
+        // Find the disk configuration for this bucket
+        $diskName = null;
+        foreach (config('filesystems.disks') as $name => $diskConfig) {
+            if (($diskConfig['driver'] ?? '') === 's3' && ($diskConfig['bucket'] ?? '') === $bucket) {
+                $diskName = $name;
+                break;
+            }
+        }
+
+        if (!$diskName) {
+            throw new \Exception("No disk configuration found for S3 bucket: {$bucket}");
+        }
+
+        // Create temporary file
+        $tempFile = tempnam(sys_get_temp_dir(), 'import_excel_');
+        if (!$tempFile) {
+            throw new \Exception('Failed to create temporary file');
+        }
+
+        try {
+            // Download file content
+            $disk = Storage::disk($diskName);
+            $content = $disk->get($key);
+
+            if ($content === null) {
+                throw new \Exception("Failed to download S3 file: {$s3FilePath}");
+            }
+
+            // Write to temporary file
+            file_put_contents($tempFile, $content);
+
+            return $tempFile;
+        } catch (\Exception $e) {
+            // Clean up on failure
+            if (file_exists($tempFile)) {
+                @unlink($tempFile);
             }
             throw $e;
         }
