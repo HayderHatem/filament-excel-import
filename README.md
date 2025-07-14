@@ -36,8 +36,8 @@ namespace App\Filament\Resources;
 
 use App\Filament\Imports\UserImporter;
 use App\Models\User;
-use Filament\Actions;
 use Filament\Resources\Resource;
+use HayderHatem\FilamentExcelImport\Actions\FullImportAction;
 use HayderHatem\FilamentExcelImport\Actions\Concerns\CanImportExcelRecords;
 
 class UserResource extends Resource
@@ -47,7 +47,7 @@ class UserResource extends Resource
     public static function getHeaderActions(): array
     {
         return [
-            Actions\ImportAction::make()
+            FullImportAction::make()
                 ->importer(UserImporter::class),
         ];
     }
@@ -59,7 +59,7 @@ class UserResource extends Resource
 The package supports all of Filament's original import options plus additional Excel-specific features:
 
 ```php
-Actions\ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     // Standard Filament options
     ->chunkSize(1000)
@@ -77,7 +77,7 @@ Actions\ImportAction::make()
 When importing Excel files with multiple sheets, users can select which sheet to import:
 
 ```php
-Actions\ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->activeSheet(0) // Default to first sheet
 ```
@@ -92,7 +92,7 @@ You can add custom form fields to the import modal:
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Toggle;
 
-Actions\ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->additionalFormComponents([
         Select::make('department_id')
@@ -133,7 +133,7 @@ The package automatically detects large files and switches to streaming mode to 
 
 ```php
 // Files larger than 10MB (default) will automatically use streaming
-Actions\ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->streamingThreshold(5 * 1024 * 1024) // Custom 5MB threshold
 ```
@@ -143,7 +143,7 @@ Actions\ImportAction::make()
 Force streaming mode on or off:
 
 ```php
-Actions\ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->useStreaming(true) // Always use streaming
     // or
@@ -182,7 +182,7 @@ class CustomImportJob extends ImportExcel
 }
 
 // Use in your action
-Actions\ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     ->job(CustomImportJob::class)
 ```
@@ -276,7 +276,7 @@ All your existing code will work exactly the same! The package is designed as a 
 Take advantage of new features:
 
 ```php
-Actions\ImportAction::make()
+FullImportAction::make()
     ->importer(UserImporter::class)
     // Your existing configuration works as-is
     ->chunkSize(500)
