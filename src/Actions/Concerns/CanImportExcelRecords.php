@@ -138,8 +138,8 @@ trait CanImportExcelRecords
                             $this->setBasicColumnMapping($set, $action);
 
                             Notification::make()
-                                ->title(__('No headers detected'))
-                                ->body(__('Could not detect column headers. Please map columns manually using the text inputs below.'))
+                                ->title(__('filament-excel-import::import.no_headers_detected'))
+                                ->body(__('filament-excel-import::import.could_not_detect_headers'))
                                 ->warning()
                                 ->send();
 
@@ -182,8 +182,8 @@ trait CanImportExcelRecords
                     } catch (\Throwable $e) {
                         // Handle any errors during header reading
                         Notification::make()
-                            ->title(__('File preview unavailable'))
-                            ->body(__('Unable to preview file contents. You can still import, but please map columns manually.'))
+                            ->title(__('filament-excel-import::import.file_preview_unavailable'))
+                            ->body(__('filament-excel-import::import.unable_to_preview_file'))
                             ->warning()
                             ->send();
 
@@ -196,7 +196,7 @@ trait CanImportExcelRecords
                 ->required()
                 ->hiddenLabel(),
             Select::make('activeSheet')
-                ->label(__('Sheet'))
+                ->label(__('filament-excel-import::import.sheet'))
                 ->options(fn(Forms\Get $get): array => $get('availableSheets') ?? [])
                 ->visible(fn(Forms\Get $get): bool => is_array($get('availableSheets')) && count($get('availableSheets')) > 1)
                 ->reactive()
@@ -241,8 +241,8 @@ trait CanImportExcelRecords
                         $this->setBasicColumnMapping($set, $action);
 
                         Notification::make()
-                            ->title(__('Sheet reading error'))
-                            ->body(__('Unable to read the selected sheet. Column mapping has been reset.'))
+                            ->title(__('filament-excel-import::import.sheet_reading_error'))
+                            ->body(__('filament-excel-import::import.unable_to_read_sheet'))
                             ->warning()
                             ->send();
                     }
@@ -299,8 +299,8 @@ trait CanImportExcelRecords
                     ]);
 
                     Notification::make()
-                        ->title(__('Invalid file'))
-                        ->body(__('Please upload a valid Excel file.'))
+                        ->title(__('filament-excel-import::import.invalid_file'))
+                        ->body(__('filament-excel-import::import.please_upload_valid_excel'))
                         ->danger()
                         ->send();
                     return;
@@ -407,8 +407,8 @@ trait CanImportExcelRecords
                             \Illuminate\Support\Facades\Log::error('Failed to get uploaded file spreadsheet');
 
                             Notification::make()
-                                ->title(__('Error reading file'))
-                                ->body(__('Unable to read the uploaded Excel file.'))
+                                ->title(__('filament-excel-import::import.error_reading_file'))
+                                ->body(__('filament-excel-import::import.unable_to_read_uploaded_file'))
                                 ->danger()
                                 ->send();
                             return;
@@ -474,8 +474,8 @@ trait CanImportExcelRecords
 
                         // If regular loading fails, fall back to streaming
                         Notification::make()
-                            ->title(__('Switching to streaming mode'))
-                            ->body(__('File too large for standard processing, using streaming import...'))
+                            ->title(__('filament-excel-import::import.switching_to_streaming_mode'))
+                            ->body(__('filament-excel-import::import.file_too_large_streaming'))
                             ->info()
                             ->send();
 
@@ -641,7 +641,7 @@ trait CanImportExcelRecords
                 ]);
 
                 Notification::make()
-                    ->title(__('Error processing Excel file'))
+                    ->title(__('filament-excel-import::import.error_processing_excel_file'))
                     ->body($e->getMessage())
                     ->danger()
                     ->send();
@@ -654,8 +654,8 @@ trait CanImportExcelRecords
                 ]);
 
                 Notification::make()
-                    ->title(__('Import failed'))
-                    ->body(__('An unexpected error occurred: ') . $e->getMessage())
+                    ->title(__('filament-excel-import::import.import_failed'))
+                    ->body(__('filament-excel-import::import.unexpected_error_occurred') . $e->getMessage())
                     ->danger()
                     ->send();
             }
@@ -666,7 +666,7 @@ trait CanImportExcelRecords
                 $this instanceof TableAction => TableAction::class,
                 default => Action::class,
             })::make('downloadExample')
-                ->label(__('Download Template'))
+                ->label(__('filament-excel-import::import.download_template'))
                 ->link()
                 ->action(function (): StreamedResponse {
                     $columns = $this->getImporter()::getColumns();

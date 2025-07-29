@@ -19,7 +19,7 @@ composer require hayderhatem/filament-excel-import
 - 🚀 **Memory Efficient**: Handles large files without memory exhaustion
 - 🔁 **Streaming Import**: Automatic streaming for large files (configurable)
 - 📝 **Custom Import Options**: Add additional form fields to import modal
-- 🌐 **Multi-language**: Translatable error messages and UI text
+- 🌐 **Full Internationalization**: Complete translation support with RTL for Arabic
 - ⚠️ **Error Handling**: User-friendly error messages and failed rows export
 - 🎨 **Easy Configuration**: Minimal setup required
 
