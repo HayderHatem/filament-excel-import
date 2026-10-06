@@ -106,11 +106,7 @@ class ImportExcel implements ShouldQueue
 
             foreach ($processedRows as $processedRow) {
                 try {
-                    DB::transaction(fn() => $importer->import(
-                        $processedRow,
-                        $this->columnMap,
-                        $this->options,
-                    ));
+                    DB::transaction(fn() => $importer($processedRow));
 
                     $importedRowsCount++;
                 } catch (Throwable $exception) {
@@ -159,6 +155,7 @@ class ImportExcel implements ShouldQueue
                     'file_path' => $import->file_path,
                 ]);
             }
+
             throw $e;
         }
 
@@ -172,15 +169,9 @@ class ImportExcel implements ShouldQueue
         }
 
         try {
-            $import->increment('imported_rows', $importedRowsCount);
+            $import->increment('successful_rows', $importedRowsCount);
         } catch (Throwable $e) {
-            Log::error('Failed to update imported_rows: ' . $e->getMessage());
-        }
-
-        try {
-            $import->increment('failed_rows', $failedRowsCount);
-        } catch (Throwable $e) {
-            Log::error('Failed to update failed_rows: ' . $e->getMessage());
+            Log::error('Failed to update successful_rows: ' . $e->getMessage());
         }
 
         // Notify only if we can safely do so

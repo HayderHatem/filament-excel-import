@@ -10,7 +10,8 @@ use Filament\Actions\Imports\Events\ImportStarted;
 use Filament\Actions\Imports\ImportColumn;
 use Filament\Actions\Imports\Importer;
 use Filament\Forms;
-use Filament\Forms\Components\Fieldset;
+use Filament\Forms\Get as Getter;
+use Filament\Schemas\Components\Fieldset;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Select;
 use Filament\Notifications\Actions\Action as NotificationAction;
@@ -93,6 +94,7 @@ trait CanImportExcelRecords
 
         $this->form(fn(ImportAction | ImportTableAction $action): array => array_merge([
             FileUpload::make('file')
+                ->live()
                 ->label(__('filament-actions::import.modal.form.file.label'))
                 ->placeholder(__('filament-actions::import.modal.form.file.placeholder'))
                 ->acceptedFileTypes([
@@ -108,12 +110,15 @@ trait CanImportExcelRecords
                     'application/vnd.ms-excel.template.macroEnabled.12',
                     'application/vnd.ms-excel.sheet.binary.macroEnabled.12',
                 ])
+                ->extraAttributes([
+                    'class' => 'excel-import-upload',
+                ])
                 ->rules($action->getFileValidationRules())
                 ->when(
                     filled($action->getDisk()),
                     fn(FileUpload $component) => $component->disk($action->getDisk()),
                 )
-                ->afterStateUpdated(function (FileUpload $component, Component $livewire, Forms\Set $set, ?TemporaryUploadedFile $state) use ($action) {
+                ->afterStateUpdated(function (FileUpload $component, Component $livewire, $set, ?TemporaryUploadedFile $state) use ($action) {
                     if (! $state instanceof TemporaryUploadedFile) {
                         return;
                     }
@@ -197,11 +202,11 @@ trait CanImportExcelRecords
                 ->hiddenLabel(),
             Select::make('activeSheet')
                 ->label(__('filament-excel-import::import.sheet'))
-                ->options(fn(Forms\Get $get): array => $get('availableSheets') ?? [])
-                ->visible(fn(Forms\Get $get): bool => is_array($get('availableSheets')) && count($get('availableSheets')) > 1)
-                ->reactive()
-                ->afterStateUpdated(function (Forms\Set $set, Forms\Get $get, $state) use ($action) {
-                    $file = Arr::first((array) ($get('file') ?? []));
+                ->options(fn($get): array => $get('availableSheets') ?? [])
+                ->visible(fn($get): bool => is_array($get('availableSheets')) && count($get('availableSheets')) > 1)
+                ->live()
+                ->afterStateUpdated(function ($set, $get, $state) use ($action) {
+                    $file = $this->resolveUploadedFile($get('file'));
                     if (! $file instanceof TemporaryUploadedFile) {
                         return;
                     }
@@ -252,9 +257,9 @@ trait CanImportExcelRecords
             Fieldset::make(__('filament-actions::import.modal.form.columns.label'))
                 ->columns(1)
                 ->inlineLabel()
-                ->schema(function (Forms\Get $get) use ($action): array {
-                    $file = Arr::first((array) ($get('file') ?? []));
-                    if (! $file instanceof TemporaryUploadedFile) {
+                ->schema(function ($get) use ($action): array {
+                    $file = $this->resolveUploadedFile($get('file'));
+                    if (! $file) {
                         return [];
                     }
 
@@ -279,7 +284,7 @@ trait CanImportExcelRecords
                     }
                 })
                 ->statePath('columnMap')
-                ->visible(fn(Forms\Get $get): bool => Arr::first((array) ($get('file') ?? [])) instanceof TemporaryUploadedFile),
+                ->visible(fn ($get): bool => filled($this->resolveUploadedFile($get('file')))),
         ], $action->getImporter()::getOptionsFormComponents()));
 
         $this->action(function (ImportAction | ImportTableAction $action, array $data) {
@@ -594,7 +599,7 @@ trait CanImportExcelRecords
                             ->when(
                                 $failedRowsCount,
                                 fn(Notification $notification) => $notification->actions([
-                                    NotificationAction::make('downloadFailedRowsCsv')
+                                    Action::make('downloadFailedRowsCsv')
                                         ->label(trans_choice('filament-actions::import.notifications.completed.actions.download_failed_rows_csv.label', $failedRowsCount, [
                                             'count' => Number::format($failedRowsCount),
                                         ]))
@@ -1252,7 +1257,7 @@ trait CanImportExcelRecords
             // For very small files, assume minimal rows
             if ($fileSize < 1024) { // Less than 1KB
                 return 1;
-            } else if ($fileSize < 10240) { // Less than 10KB  
+            } else if ($fileSize < 10240) { // Less than 10KB
                 return 10;
             } else if ($fileSize < 102400) { // Less than 100KB
                 return 100;
@@ -1407,7 +1412,7 @@ trait CanImportExcelRecords
     /**
      * Set basic column mapping as fallback.
      */
-    protected function setBasicColumnMapping(Forms\Set $set, ImportAction | ImportTableAction $action): void
+    protected function setBasicColumnMapping($set, ImportAction | ImportTableAction $action): void
     {
         $set('columnMap', []);
         $set('availableSheets', []);
@@ -1734,5 +1739,20 @@ trait CanImportExcelRecords
         }
 
         return $value;
+    }
+
+    protected function resolveUploadedFile(mixed $file): ?TemporaryUploadedFile
+    {
+        if ($file instanceof TemporaryUploadedFile) {
+            return $file;
+        }
+
+        if (is_array($file)) {
+            $file = Arr::first($file);
+
+            return $file instanceof TemporaryUploadedFile ? $file : null;
+        }
+
+        return null;
     }
 }
